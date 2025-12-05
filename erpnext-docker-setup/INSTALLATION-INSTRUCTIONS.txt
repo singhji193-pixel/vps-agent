@@ -1,0 +1,161 @@
+================================================================================
+   ERPNext v15 Docker Installation - Step-by-Step Instructions
+================================================================================
+
+RECOMMENDATION: ERPNext Version 15 (Latest Stable)
+- Supported until December 2027
+- Latest features and active development
+- Better than v14 in almost every way
+
+================================================================================
+INSTALLATION STEPS FOR YOUR VPS (82.180.137.121)
+================================================================================
+
+STEP 1: Connect to your VPS
+----------------------------
+ssh root@82.180.137.121
+
+
+STEP 2: Download the installation files
+----------------------------------------
+You have two options:
+
+Option A - If you can transfer files from this environment:
+  • Download these files from /app/erpnext-docker-setup/
+  • Transfer to your VPS using scp or sftp
+  
+Option B - Create files manually on VPS:
+  • Create directory: mkdir -p /opt/erpnext && cd /opt/erpnext
+  • Copy contents of these files to your VPS:
+    - docker-compose.yml
+    - .env
+    - install.sh
+    - README.md
+
+
+STEP 3: Run the automated installer
+------------------------------------
+cd /opt/erpnext
+chmod +x install.sh
+sudo bash install.sh
+
+The script will:
+✓ Install Docker and Docker Compose
+✓ Download ERPNext v15 images
+✓ Configure the system
+✓ Create your ERPNext site
+✓ Start all services
+
+Installation takes 10-15 minutes.
+
+
+STEP 4: Access ERPNext
+-----------------------
+Open browser: http://82.180.137.121:8080
+Login with:
+  Username: Administrator
+  Password: (what you set during installation)
+
+
+================================================================================
+IMPORTANT NOTES
+================================================================================
+
+1. FIREWALL: Ensure port 8080 is open
+   sudo ufw allow 8080/tcp
+
+2. RESOURCES: Minimum 4GB RAM, 8GB recommended for production
+
+3. ISOLATION: ERPNext runs in Docker, fully isolated like your n8n
+
+4. PERSISTENCE: All data stored in Docker volumes (survives restarts)
+
+5. MANAGEMENT COMMANDS:
+   - View status:   cd /opt/erpnext && docker compose ps
+   - View logs:     docker compose logs -f
+   - Restart:       docker compose restart
+   - Stop:          docker compose down
+   - Start:         docker compose up -d
+
+
+================================================================================
+QUICK START (If Docker already installed)
+================================================================================
+
+If you already have Docker on your VPS:
+
+1. cd /opt/erpnext
+2. Copy docker-compose.yml and .env files
+3. Edit .env with your site name and password
+4. Run: bash quick-start.sh
+
+
+================================================================================
+PRODUCTION SETUP (Optional but Recommended)
+================================================================================
+
+For production use, add these enhancements:
+
+1. HTTPS with Let's Encrypt:
+   - Install nginx as reverse proxy
+   - Get free SSL certificate
+   - Instructions in README.md
+
+2. Custom Domain:
+   - Update SITE_NAME in .env
+   - Point DNS A record to 82.180.137.121
+
+3. Automated Backups:
+   - Set up cron jobs for daily backups
+   - Backup commands in README.md
+
+4. Monitoring:
+   - Set up log monitoring
+   - Resource monitoring
+
+
+================================================================================
+FILES IN THIS PACKAGE
+================================================================================
+
+1. docker-compose.yml     - Docker services configuration
+2. .env                   - Environment variables (site name, password)
+3. install.sh            - Automated installation script
+4. quick-start.sh        - Quick start for existing Docker installations
+5. README.md             - Comprehensive documentation
+6. INSTALLATION-INSTRUCTIONS.txt - This file
+
+
+================================================================================
+SUPPORT & RESOURCES
+================================================================================
+
+Documentation:  https://docs.erpnext.com/
+Forum:          https://discuss.frappe.io/
+GitHub:         https://github.com/frappe/erpnext
+
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+Services not starting?
+  → Check: docker compose logs -f
+  → Verify: docker compose ps
+  → Ensure: 4GB+ RAM available
+
+Can't access web interface?
+  → Check firewall: sudo ufw status
+  → Verify port: netstat -tulpn | grep 8080
+  → Check logs: docker compose logs frontend
+
+Need to reset?
+  → Stop: docker compose down -v
+  → Start fresh: docker compose up -d
+
+
+================================================================================
+
+Installation support: Refer to README.md for detailed troubleshooting guide.
+
+================================================================================
