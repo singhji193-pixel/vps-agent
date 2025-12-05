@@ -1,0 +1,183 @@
+================================================================================
+   ERPNext v15 + Caddy - QUICK START GUIDE
+================================================================================
+
+Your VPS: 82.180.137.121
+Caddy: Already installed ✅
+Goal: Install ERPNext v15 integrated with Caddy
+
+================================================================================
+FASTEST INSTALLATION (3 Commands)
+================================================================================
+
+ssh root@82.180.137.121
+
+cd /opt/erpnext
+
+sudo bash install-with-caddy.sh
+
+
+That's it! The script will:
+  ✅ Find your Caddy automatically
+  ✅ Install ERPNext v15
+  ✅ Configure Caddy reverse proxy
+  ✅ Reload Caddy
+  ✅ Start everything
+
+Time: ~15 minutes
+
+================================================================================
+WHAT HAPPENS DURING INSTALLATION
+================================================================================
+
+1. Detects your Caddy installation (Caddyfile location, etc.)
+2. Installs Docker (if needed)
+3. Downloads ERPNext v15 images
+4. Creates ERPNext site
+5. Adds this to your Caddyfile:
+
+   82.180.137.121:8080 {
+       reverse_proxy localhost:8000 {
+           header_up X-Forwarded-Host {host}
+           header_up X-Forwarded-Proto {scheme}
+       }
+   }
+
+6. Reloads Caddy (no downtime for other apps!)
+
+================================================================================
+ACCESS ERPNEXT
+================================================================================
+
+URL: http://82.180.137.121:8080
+
+Login:
+  Username: Administrator
+  Password: (what you set during installation)
+
+================================================================================
+FILE STRUCTURE
+================================================================================
+
+FOR CADDY USERS, USE THESE FILES:
+  ✅ install-with-caddy.sh         - Automated installer
+  ✅ find-caddy.sh                 - Find your Caddy setup
+  ✅ docker-compose-caddy.yml      - Docker config for Caddy
+  ✅ Caddyfile.erpnext             - Caddy configuration
+  ✅ CADDY-INTEGRATION-GUIDE.md    - Full documentation
+
+IGNORE THESE (for standalone nginx setup):
+  ⛔ install.sh
+  ⛔ docker-compose.yml
+
+================================================================================
+MANUAL INSTALLATION (If You Prefer)
+================================================================================
+
+1. Find your Caddy setup:
+   sudo bash find-caddy.sh
+
+2. Install ERPNext:
+   cp docker-compose-caddy.yml docker-compose.yml
+   nano .env  # Set SITE_NAME and ADMIN_PASSWORD
+   docker compose up -d configurator
+   sleep 10
+   docker compose up -d create-site
+   # Wait 5-10 minutes
+   docker compose up -d
+
+3. Add to your Caddyfile:
+   # Copy content from Caddyfile.erpnext
+
+4. Reload Caddy:
+   sudo systemctl reload caddy
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+Can't find Caddy?
+  → Run: sudo bash find-caddy.sh
+
+ERPNext containers not starting?
+  → Check: docker compose ps
+  → Logs: docker compose logs -f
+
+Can't access ERPNext?
+  → Check Caddy: sudo systemctl status caddy
+  → Check firewall: sudo ufw allow 8080/tcp
+  → Test backend: curl http://localhost:8000
+
+Caddy config errors?
+  → Validate: sudo caddy validate --config /etc/caddy/Caddyfile
+  → Check logs: sudo journalctl -u caddy -f
+
+================================================================================
+MANAGEMENT COMMANDS
+================================================================================
+
+ERPNext:
+  cd /opt/erpnext
+  docker compose ps              # Status
+  docker compose logs -f         # Logs
+  docker compose restart         # Restart
+
+Caddy:
+  sudo systemctl status caddy    # Status
+  sudo systemctl reload caddy    # Reload config
+  sudo journalctl -u caddy -f    # Logs
+
+================================================================================
+KEY DIFFERENCES FROM STANDALONE SETUP
+================================================================================
+
+✅ Uses docker-compose-caddy.yml (not docker-compose.yml)
+✅ ERPNext nginx runs on localhost:8000 (internal only)
+✅ Caddy handles external traffic on port 8080
+✅ Integrates with your existing Caddy setup
+✅ No conflicts with n8n or other apps
+✅ Automatic HTTPS when you add a domain
+
+================================================================================
+ADDING A CUSTOM DOMAIN (OPTIONAL)
+================================================================================
+
+When you're ready to use a domain (e.g., erp.yourdomain.com):
+
+1. Point DNS A record to 82.180.137.121
+
+2. Update .env:
+   SITE_NAME=erp.yourdomain.com
+
+3. Update Caddyfile:
+   erp.yourdomain.com {
+       reverse_proxy localhost:8000 {
+           header_up X-Forwarded-Host {host}
+           header_up X-Forwarded-Proto {scheme}
+       }
+   }
+
+4. Reload:
+   docker compose restart
+   sudo systemctl reload caddy
+
+Caddy will get FREE SSL certificate automatically! 🎉
+
+================================================================================
+SUPPORT & DOCUMENTATION
+================================================================================
+
+Full Guide: CADDY-INTEGRATION-GUIDE.md
+ERPNext Docs: https://docs.erpnext.com/
+Caddy Docs: https://caddyserver.com/docs/
+Forum: https://discuss.frappe.io/
+
+================================================================================
+
+Ready to install? Run this on your VPS:
+
+  ssh root@82.180.137.121
+  cd /opt/erpnext
+  sudo bash install-with-caddy.sh
+
+================================================================================
