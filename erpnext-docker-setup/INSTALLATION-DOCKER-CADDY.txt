@@ -1,0 +1,290 @@
+================================================================================
+   ERPNext v15 - DOCKER CADDY SETUP (Like Your n8n & Nextcloud)
+================================================================================
+
+PERFECT FOR YOUR SETUP!
+Since Caddy runs inside Docker for each app, this follows the SAME pattern.
+
+================================================================================
+WHAT YOU GET
+================================================================================
+
+ERPNext Docker Stack (isolated, like n8n/Nextcloud):
+  ✓ Caddy container (reverse proxy)
+  ✓ ERPNext backend
+  ✓ MariaDB database
+  ✓ Redis cache
+  ✓ Workers & scheduler
+
+Port 8080 (or your choice)
+
+================================================================================
+FASTEST INSTALLATION
+================================================================================
+
+1. SSH to your VPS:
+   ssh root@82.180.137.121
+
+2. Create directory:
+   mkdir -p /opt/erpnext
+   cd /opt/erpnext
+
+3. Upload these files:
+   - docker-compose-standalone-caddy.yml
+   - Caddyfile
+   - install-standalone-caddy.sh
+   - .env (optional, will be created)
+
+4. Run installer:
+   sudo bash install-standalone-caddy.sh
+
+5. Wait ~15 minutes
+
+6. Access:
+   http://82.180.137.121:8080
+
+================================================================================
+FILES TO USE
+================================================================================
+
+✅ USE THESE FOR DOCKER CADDY SETUP:
+   - docker-compose-standalone-caddy.yml  ← Main Docker config
+   - Caddyfile                            ← Caddy config
+   - install-standalone-caddy.sh          ← Installer
+   - .env                                 ← Settings
+
+❌ IGNORE THESE (for other setups):
+   - docker-compose.yml (standalone nginx)
+   - docker-compose-caddy.yml (system-wide Caddy)
+   - install.sh
+   - install-with-caddy.sh
+   - find-caddy.sh
+
+================================================================================
+COMPARISON WITH YOUR OTHER APPS
+================================================================================
+
+n8n Setup:
+  /opt/n8n/
+  ├── docker-compose.yml
+  ├── Caddyfile
+  └── .env
+
+Nextcloud Setup:
+  /opt/nextcloud/
+  ├── docker-compose.yml
+  ├── Caddyfile
+  └── .env
+
+ERPNext Setup (this):
+  /opt/erpnext/
+  ├── docker-compose.yml  ← from docker-compose-standalone-caddy.yml
+  ├── Caddyfile
+  └── .env
+
+SAME PATTERN! ✅
+
+================================================================================
+MANUAL INSTALLATION STEPS
+================================================================================
+
+If you prefer manual setup:
+
+1. Install Docker (if not already):
+   curl -fsSL https://get.docker.com | sh
+
+2. Create ERPNext directory:
+   mkdir -p /opt/erpnext
+   cd /opt/erpnext
+
+3. Copy files:
+   - Copy docker-compose-standalone-caddy.yml as docker-compose.yml
+   - Copy Caddyfile
+   - Create .env with:
+     SITE_NAME=erpnext.local
+     ADMIN_PASSWORD=YourStrongPassword123
+     FRAPPE_SITE_NAME_HEADER=$$host
+
+4. Start services:
+   docker compose up -d configurator
+   sleep 10
+   docker compose up -d create-site
+   # Wait for site creation (check with: docker compose logs -f create-site)
+   docker compose up -d
+
+5. Access:
+   http://82.180.137.121:8080
+   Username: Administrator
+   Password: (from .env)
+
+================================================================================
+DOCKER STRUCTURE
+================================================================================
+
+services:
+  caddy:          # Exposed on port 8080
+    → nginx:      # Internal reverse proxy
+      → backend:  # ERPNext application
+      → db:       # MariaDB
+      → redis:    # Cache & queues
+      → workers:  # Background jobs
+
+================================================================================
+MANAGEMENT COMMANDS
+================================================================================
+
+Just like your n8n and Nextcloud:
+
+cd /opt/erpnext
+
+docker compose ps              # Check status
+docker compose logs -f         # View all logs
+docker compose logs -f caddy   # Caddy logs only
+docker compose restart         # Restart all
+docker compose restart caddy   # Restart Caddy only
+docker compose down            # Stop all
+docker compose up -d           # Start all
+docker compose pull            # Update images
+docker compose up -d           # Apply updates
+
+================================================================================
+ACCESSING ERPNEXT
+================================================================================
+
+URL: http://82.180.137.121:8080
+
+Login:
+  Username: Administrator
+  Password: (what you set in .env)
+
+================================================================================
+CHANGING PORT
+================================================================================
+
+If port 8080 is already used:
+
+Edit docker-compose.yml:
+  caddy:
+    ports:
+      - "9090:8080"  # Change first number
+
+Or installer will ask during setup.
+
+================================================================================
+ADDING DOMAIN (OPTIONAL)
+================================================================================
+
+When you get a domain:
+
+1. Point DNS A record to 82.180.137.121
+
+2. Update .env:
+   SITE_NAME=erp.yourdomain.com
+
+3. Update Caddyfile:
+   erp.yourdomain.com {
+       reverse_proxy nginx:8080
+   }
+
+4. Restart:
+   docker compose down
+   docker compose up -d
+
+Caddy auto-gets SSL certificate! 🎉
+
+================================================================================
+BACKUP
+================================================================================
+
+Database:
+  docker compose exec db mysqldump -u root -padmin --all-databases > backup.sql
+
+Files:
+  docker compose exec backend tar czf /tmp/sites.tar.gz /home/frappe/frappe-bench/sites
+  docker compose cp backend:/tmp/sites.tar.gz ./sites-backup.tar.gz
+
+Config:
+  tar czf config-backup.tar.gz docker-compose.yml Caddyfile .env
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+Port conflict?
+  → Change port in docker-compose.yml ports section
+  → Or: sudo netstat -tlnp | grep 8080
+
+Can't access?
+  → Check: docker compose ps (all should be "Up")
+  → Logs: docker compose logs -f
+  → Firewall: sudo ufw allow 8080/tcp
+
+Site not created?
+  → Logs: docker compose logs create-site
+  → Retry: docker compose up create-site
+
+Caddy issues?
+  → Logs: docker compose logs caddy
+  → Test: docker compose exec caddy caddy validate --config /etc/caddy/Caddyfile
+
+================================================================================
+BENEFITS OF THIS SETUP
+================================================================================
+
+✅ Same pattern as n8n/Nextcloud
+✅ Fully isolated (no conflicts)
+✅ Easy to manage
+✅ Easy to backup/restore
+✅ Easy to move to another server
+✅ No system-wide configuration
+✅ Clean removal (docker compose down -v)
+✅ Independent updates per app
+
+================================================================================
+FILE TRANSFER TO VPS
+================================================================================
+
+Option 1 - SCP:
+  scp docker-compose-standalone-caddy.yml Caddyfile install-standalone-caddy.sh \
+      root@82.180.137.121:/opt/erpnext/
+
+Option 2 - SFTP:
+  sftp root@82.180.137.121
+  cd /opt/erpnext
+  put docker-compose-standalone-caddy.yml
+  put Caddyfile
+  put install-standalone-caddy.sh
+  exit
+
+Option 3 - Manual:
+  Copy file contents and create files on VPS
+
+================================================================================
+AFTER INSTALLATION
+================================================================================
+
+1. Access ERPNext
+2. Complete setup wizard
+3. Change default password
+4. Configure company
+5. Set up users
+6. Start using!
+
+================================================================================
+SUPPORT
+================================================================================
+
+Documentation: DOCKER-CADDY-SETUP.md (in this package)
+ERPNext Docs: https://docs.erpnext.com/
+Caddy Docs: https://caddyserver.com/docs/
+Forum: https://discuss.frappe.io/
+
+================================================================================
+
+READY TO INSTALL?
+
+  ssh root@82.180.137.121
+  cd /opt/erpnext
+  sudo bash install-standalone-caddy.sh
+
+================================================================================
