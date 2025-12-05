@@ -1,0 +1,41 @@
+# ERPNext Caddy Configuration
+# Add this to your existing Caddyfile
+
+# Using IP address (change to domain when ready)
+82.180.137.121:8080 {
+    # Reverse proxy to ERPNext
+    reverse_proxy localhost:8000 {
+        header_up X-Forwarded-Host {host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # WebSocket support
+    @websocket {
+        header Connection *Upgrade*
+        header Upgrade websocket
+    }
+    reverse_proxy @websocket localhost:8000
+
+    # Logging
+    log {
+        output file /var/log/caddy/erpnext.log
+    }
+}
+
+# Alternative: If you want to use subdomain (when you have domain)
+# erp.yourdomain.com {
+#     reverse_proxy localhost:8000 {
+#         header_up X-Forwarded-Host {host}
+#         header_up X-Forwarded-Proto {scheme}
+#     }
+#
+#     @websocket {
+#         header Connection *Upgrade*
+#         header Upgrade websocket
+#     }
+#     reverse_proxy @websocket localhost:8000
+#
+#     log {
+#         output file /var/log/caddy/erpnext.log
+#     }
+# }
