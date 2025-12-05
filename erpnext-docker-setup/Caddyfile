@@ -1,0 +1,54 @@
+# ERPNext Caddyfile
+# Caddy container configuration (similar to your n8n/Nextcloud setup)
+
+{
+    # Global options
+    admin off
+    auto_https off
+}
+
+# Listen on port 8080 (HTTP)
+:8080 {
+    # Reverse proxy to internal nginx
+    reverse_proxy nginx:8080 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+    }
+
+    # WebSocket support for real-time features
+    @websocket {
+        header Connection *Upgrade*
+        header Upgrade websocket
+    }
+
+    # Logging
+    log {
+        output stdout
+        format console
+        level INFO
+    }
+
+    # Increase timeouts for long operations
+    header {
+        -Server
+    }
+}
+
+# For HTTPS with domain (optional - enable when you have a domain)
+# erp.yourdomain.com {
+#     reverse_proxy nginx:8080 {
+#         header_up Host {host}
+#         header_up X-Real-IP {remote_host}
+#         header_up X-Forwarded-For {remote_host}
+#         header_up X-Forwarded-Proto {scheme}
+#         header_up X-Forwarded-Host {host}
+#     }
+#     
+#     log {
+#         output stdout
+#         format console
+#     }
+# }
