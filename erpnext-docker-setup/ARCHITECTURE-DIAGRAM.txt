@@ -1,0 +1,172 @@
+================================================================================
+                    ERPNEXT v15 ARCHITECTURE
+                  (Docker Caddy Setup - Your Pattern)
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         VPS: 82.180.137.121                             │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                           │
+│  ┌───────────────────────────────────────────────────────────────┐     │
+│  │  /opt/n8n/                          (Port 8000)               │     │
+│  │  ├── docker-compose.yml                                       │     │
+│  │  └── Caddyfile                                                │     │
+│  │                                                                │     │
+│  │  [Caddy Container] → [n8n Container]                          │     │
+│  └───────────────────────────────────────────────────────────────┘     │
+│                                                                           │
+│  ┌───────────────────────────────────────────────────────────────┐     │
+│  │  /opt/nextcloud/                    (Port 8100)               │     │
+│  │  ├── docker-compose.yml                                       │     │
+│  │  └── Caddyfile                                                │     │
+│  │                                                                │     │
+│  │  [Caddy Container] → [Nextcloud Container]                    │     │
+│  └───────────────────────────────────────────────────────────────┘     │
+│                                                                           │
+│  ┌───────────────────────────────────────────────────────────────┐     │
+│  │  /opt/erpnext/                      (Port 8080)       ← NEW!  │     │
+│  │  ├── docker-compose.yml                                       │     │
+│  │  └── Caddyfile                                                │     │
+│  │                                                                │     │
+│  │  ┌─────────────────────────────────────────────────────────┐ │     │
+│  │  │ Caddy Container (Port 8080 exposed)                     │ │     │
+│  │  └─────────────┬───────────────────────────────────────────┘ │     │
+│  │                ↓                                               │     │
+│  │  ┌─────────────────────────────────────────────────────────┐ │     │
+│  │  │ Nginx Container (internal only)                         │ │     │
+│  │  └─────────────┬───────────────────────────────────────────┘ │     │
+│  │                ↓                                               │     │
+│  │  ┌─────────────────────────────────────────────────────────┐ │     │
+│  │  │ ERPNext Backend                                         │ │     │
+│  │  │ MariaDB 10.6                                            │ │     │
+│  │  │ Redis (cache, queue, socketio)                         │ │     │
+│  │  │ Workers (short, long queues)                           │ │     │
+│  │  │ Scheduler                                               │ │     │
+│  │  │ WebSocket                                               │ │     │
+│  │  └─────────────────────────────────────────────────────────┘ │     │
+│  │                                                                │     │
+│  │  Docker Volumes:                                               │     │
+│  │  • erpnext_sites      (ERPNext data)                          │     │
+│  │  • erpnext_db-data    (Database)                              │     │
+│  │  • erpnext_redis-*    (Cache/Queue)                           │     │
+│  │  • erpnext_caddy_*    (Caddy config)                          │     │
+│  │                                                                │     │
+│  └───────────────────────────────────────────────────────────────┘     │
+│                                                                           │
+└─────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+                            CONTAINER DETAILS
+================================================================================
+
+ERPNext Docker Network (erpnext-network):
+
+  caddy
+    ↓ reverse_proxy nginx:8080
+  nginx  
+    ↓ proxy_pass backend:8000
+  backend ←─┐
+            │
+  db ───────┤ (MariaDB)
+            │
+  redis-cache ──┤
+  redis-queue ──┤ (Redis)
+  redis-socketio─┘
+            │
+  scheduler ────┤
+  websocket ────┤ (Workers)
+  queue-short ──┤
+  queue-long ───┘
+
+================================================================================
+                            DATA FLOW
+================================================================================
+
+Internet
+   ↓
+http://82.180.137.121:8080
+   ↓
+Caddy Container (Port 8080)
+   ↓
+Nginx Container (Internal :8080)
+   ↓
+Backend Container (Internal :8000)
+   ↓
+MariaDB Container (Internal :3306)
+
+================================================================================
+                         FILE STRUCTURE
+================================================================================
+
+/opt/erpnext/
+├── docker-compose.yml          ← All service definitions
+├── Caddyfile                   ← Caddy reverse proxy config
+├── .env                        ← Site name, passwords
+└── (Docker creates volumes)
+
+================================================================================
+                      COMPARISON WITH OTHER APPS
+================================================================================
+
+┌────────────┬──────────────┬──────────────┬──────────────┐
+│ Aspect     │ n8n          │ Nextcloud    │ ERPNext      │
+├────────────┼──────────────┼──────────────┼──────────────┤
+│ Port       │ 8000         │ 8100         │ 8080         │
+│ Caddy      │ Docker ✓     │ Docker ✓     │ Docker ✓     │
+│ Isolated   │ Yes ✓        │ Yes ✓        │ Yes ✓        │
+│ Pattern    │ Same →       │ Same →       │ Same ✓       │
+└────────────┴──────────────┴──────────────┴──────────────┘
+
+================================================================================
+                          NETWORK ISOLATION
+================================================================================
+
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   n8n Network   │    │ Nextcloud Net   │    │ ERPNext Network │
+│   (isolated)    │    │   (isolated)    │    │   (isolated)    │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+        │                      │                       │
+        └──────────────────────┴───────────────────────┘
+                               │
+                         Host Network
+                      (82.180.137.121)
+
+NO CONFLICTS! Each app has its own:
+  • Docker network
+  • Caddy container
+  • Volumes
+  • Configuration
+
+================================================================================
+                        VOLUME MANAGEMENT
+================================================================================
+
+Docker Volumes (persistent data):
+
+erpnext_sites/              ← ERPNext files, sites, apps
+erpnext_db-data/            ← MariaDB database files
+erpnext_redis-cache-data/   ← Redis cache
+erpnext_redis-queue-data/   ← Redis queue
+erpnext_redis-socketio-data/← Redis socketio
+erpnext_caddy_data/         ← Caddy certificates
+erpnext_caddy_config/       ← Caddy configuration
+erpnext_logs/               ← Application logs
+
+All data persists even if containers are recreated!
+
+================================================================================
+                         ACCESS POINTS
+================================================================================
+
+External Access:
+  http://82.180.137.121:8080 → Caddy Container
+
+Internal Service Communication:
+  caddy → nginx:8080
+  nginx → backend:8000
+  backend → db:3306
+  backend → redis-cache:6379
+  backend → redis-queue:6379
+  backend → redis-socketio:6379
+
+================================================================================
