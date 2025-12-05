@@ -1,0 +1,79 @@
+================================================================================
+                    ERPNEXT v15 - USAGE SUMMARY
+================================================================================
+
+YOUR SETUP: Caddy runs inside Docker for each app (n8n, Nextcloud)
+
+================================================================================
+WHAT TO USE
+================================================================================
+
+✅ PRIMARY FILES (Docker Caddy Setup):
+
+1. docker-compose-standalone-caddy.yml  → Rename to docker-compose.yml
+2. Caddyfile                           → Caddy configuration  
+3. install-standalone-caddy.sh         → Run this to install
+4. .env                                → Configuration file
+
+📖 DOCUMENTATION:
+
+5. START-HERE.md                       → Read this first!
+6. DOCKER-CADDY-SETUP.md              → Complete guide
+7. INSTALLATION-DOCKER-CADDY.txt      → Quick reference
+
+================================================================================
+INSTALLATION COMMAND
+================================================================================
+
+ssh root@82.180.137.121
+mkdir -p /opt/erpnext && cd /opt/erpnext
+# Upload the 4 primary files above
+sudo bash install-standalone-caddy.sh
+
+Time: ~15 minutes
+
+================================================================================
+ACCESS AFTER INSTALLATION
+================================================================================
+
+URL:      http://82.180.137.121:8080
+Username: Administrator  
+Password: (what you set during installation)
+
+================================================================================
+MANAGEMENT COMMANDS
+================================================================================
+
+cd /opt/erpnext
+
+docker compose ps              # View status
+docker compose logs -f         # View logs
+docker compose logs -f caddy   # Caddy logs only
+docker compose restart         # Restart all
+docker compose down            # Stop all
+docker compose up -d           # Start all
+
+================================================================================
+YOUR APP STRUCTURE
+================================================================================
+
+/opt/n8n/          → n8n with Caddy container
+/opt/nextcloud/    → Nextcloud with Caddy container  
+/opt/erpnext/      → ERPNext with Caddy container (NEW)
+
+All isolated, no conflicts! ✅
+
+================================================================================
+SUPPORT
+================================================================================
+
+Start Here:   START-HERE.md
+Full Guide:   DOCKER-CADDY-SETUP.md
+Quick Ref:    INSTALLATION-DOCKER-CADDY.txt
+
+Online:
+  ERPNext:    https://docs.erpnext.com/
+  Caddy:      https://caddyserver.com/docs/
+  Forum:      https://discuss.frappe.io/
+
+================================================================================
