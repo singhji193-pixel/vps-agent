@@ -174,13 +174,11 @@ export default function ChatPage() {
   };
 
   const sendMessageMutation = useMutation({
-    mutationFn: async (content: string) => {
+    mutationFn: async ({ content, savedAttachments }: { content: string; savedAttachments: typeof attachments }) => {
       setIsStreaming(true);
-      const currentAttachments = [...attachments];
-      setAttachments([]); // Clear attachments after sending
       
-      const attachmentInfo = currentAttachments.length > 0 
-        ? ` [${currentAttachments.length} file(s) attached: ${currentAttachments.map(a => a.name).join(", ")}]`
+      const attachmentInfo = savedAttachments.length > 0 
+        ? ` [${savedAttachments.length} file(s) attached: ${savedAttachments.map(a => a.name).join(", ")}]`
         : "";
       
       const userMessage: ChatMessage = {
@@ -219,7 +217,7 @@ export default function ChatPage() {
           enableThinking,
           customAgentId: selectedAgentId || undefined,
           model: selectedModel === "opus" ? "claude-opus-4-20250514" : "claude-sonnet-4-20250514",
-          attachments: currentAttachments,
+          attachments: savedAttachments,
         }),
       });
 
@@ -343,13 +341,21 @@ export default function ChatPage() {
 
       return response;
     },
-    onError: (error: Error) => {
+    onError: (error: Error, variables: { content: string; savedAttachments: typeof attachments }) => {
       toast({
         title: "Error",
         description: error.message,
         variant: "destructive",
       });
       setMessages((prev) => prev.slice(0, -2));
+      // Restore attachments if there were any
+      if (variables.savedAttachments.length > 0) {
+        setAttachments(variables.savedAttachments);
+        toast({
+          title: "Attachments restored",
+          description: "Your files are still attached. Try sending again.",
+        });
+      }
     },
     onSettled: () => {
       setIsStreaming(false);
@@ -360,7 +366,9 @@ export default function ChatPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isStreaming) return;
-    sendMessageMutation.mutate(input);
+    const savedAttachments = [...attachments];
+    setAttachments([]); // Clear attachments immediately
+    sendMessageMutation.mutate({ content: input, savedAttachments });
     setInput("");
   };
 

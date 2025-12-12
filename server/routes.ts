@@ -25,13 +25,12 @@ const upload = multer({
       'image/jpeg', 'image/png', 'image/gif', 'image/webp',
       'application/pdf',
       'text/plain', 'text/markdown', 'text/csv',
-      'application/json',
-      'application/zip', 'application/x-tar', 'application/gzip'
+      'application/json'
     ];
     if (allowedTypes.includes(file.mimetype) || file.mimetype.startsWith('text/')) {
       cb(null, true);
     } else {
-      cb(new Error('File type not supported'));
+      cb(new Error('File type not supported. Allowed: images, PDF, text files'));
     }
   }
 });
@@ -664,9 +663,6 @@ export async function registerRoutes(
         } else if (file.mimetype.startsWith("text/") || file.mimetype === "application/json") {
           // Text files: read as string
           fileInfo.content = file.buffer.toString("utf-8").slice(0, 100000);
-        } else {
-          // Other files: note that they were uploaded
-          fileInfo.content = `[Binary file: ${file.originalname}, ${file.size} bytes]`;
         }
 
         processedFiles.push(fileInfo);
