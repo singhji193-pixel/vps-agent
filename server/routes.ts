@@ -5,6 +5,36 @@ import { storage } from "./storage";
 import { randomBytes, createCipheriv, createDecipheriv, scryptSync } from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { Client as SSHClient } from "ssh2";
+import multer from "multer";
+import * as fs from "fs";
+import * as path from "path";
+
+// Dynamic import for pdf-parse (CommonJS module)
+async function parsePdf(buffer: Buffer): Promise<string> {
+  const mod = await import("pdf-parse");
+  const pdfParse = (mod as any).default || mod;
+  const data = await pdfParse(buffer);
+  return data.text;
+}
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB max
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = [
+      'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+      'application/pdf',
+      'text/plain', 'text/markdown', 'text/csv',
+      'application/json',
+      'application/zip', 'application/x-tar', 'application/gzip'
+    ];
+    if (allowedTypes.includes(file.mimetype) || file.mimetype.startsWith('text/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('File type not supported'));
+    }
+  }
+});
 
 // Session storage (in production, use Redis or database sessions)
 const sessions = new Map<string, { email: string; userId: string; expiresAt: Date }>();
@@ -594,6 +624,61 @@ export async function registerRoutes(
     }
   });
 
+  // File upload endpoint for chat attachments
+  app.post("/api/upload", requireAuth, upload.array("files", 5), async (req, res) => {
+    try {
+      const files = req.files as Express.Multer.File[];
+      if (!files || files.length === 0) {
+        return res.status(400).json({ error: "No files uploaded" });
+      }
+
+      const processedFiles: Array<{
+        name: string;
+        type: string;
+        size: number;
+        content?: string;
+        base64?: string;
+        mediaType?: string;
+      }> = [];
+
+      for (const file of files) {
+        const fileInfo: any = {
+          name: file.originalname,
+          type: file.mimetype,
+          size: file.size,
+        };
+
+        // Process based on file type
+        if (file.mimetype.startsWith("image/")) {
+          // Images: convert to base64 for Claude vision
+          fileInfo.base64 = file.buffer.toString("base64");
+          fileInfo.mediaType = file.mimetype;
+        } else if (file.mimetype === "application/pdf") {
+          // PDF: extract text
+          try {
+            const text = await parsePdf(file.buffer);
+            fileInfo.content = text.slice(0, 50000); // Limit to ~50k chars
+          } catch (e) {
+            fileInfo.content = "[PDF parsing failed - file may be scanned/image-based]";
+          }
+        } else if (file.mimetype.startsWith("text/") || file.mimetype === "application/json") {
+          // Text files: read as string
+          fileInfo.content = file.buffer.toString("utf-8").slice(0, 100000);
+        } else {
+          // Other files: note that they were uploaded
+          fileInfo.content = `[Binary file: ${file.originalname}, ${file.size} bytes]`;
+        }
+
+        processedFiles.push(fileInfo);
+      }
+
+      res.json({ files: processedFiles });
+    } catch (error: any) {
+      console.error("File upload error:", error);
+      res.status(500).json({ error: error.message || "Failed to process files" });
+    }
+  });
+
   // Conversations routes
   app.get("/api/conversations", requireAuth, async (req, res) => {
     try {
@@ -815,11 +900,11 @@ Format responses with markdown. For quick commands, be concise.`;
     }
   }
 
-  // Chat endpoint with streaming, unified agent routing, extended context, and thinking mode
+  // Chat endpoint with streaming, unified agent routing, extended context, thinking mode, and file attachments
   app.post("/api/chat", requireAuth, async (req, res) => {
     try {
       const userId = (req as any).userId;
-      const { content, conversationId, forceMode, enableResearch, enableThinking, customAgentId, model } = req.body;
+      const { content, conversationId, forceMode, enableResearch, enableThinking, customAgentId, model, attachments } = req.body;
       
       // Validate model selection (default to Sonnet)
       const validModels = ["claude-sonnet-4-20250514", "claude-opus-4-20250514"];
@@ -940,10 +1025,47 @@ Format responses with markdown. For quick commands, be concise.`;
       }
 
       // Build messages for Claude with extended context
-      const claudeMessages = extendedMessages.map((m) => ({
+      const claudeMessages: any[] = extendedMessages.map((m) => ({
         role: m.role as "user" | "assistant",
         content: m.content,
       }));
+
+      // If there are attachments, modify the last user message to include them
+      if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+        const lastUserMessageIndex = claudeMessages.length - 1;
+        if (lastUserMessageIndex >= 0 && claudeMessages[lastUserMessageIndex].role === "user") {
+          const messageContent: Array<{ type: string; text?: string; source?: any }> = [];
+          
+          // Add text content first
+          const textContent = claudeMessages[lastUserMessageIndex].content;
+          if (typeof textContent === "string" && textContent.trim()) {
+            messageContent.push({ type: "text", text: textContent });
+          }
+          
+          // Add file attachments
+          for (const attachment of attachments) {
+            if (attachment.base64 && attachment.mediaType) {
+              // Image attachment - use Claude vision
+              messageContent.push({
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: attachment.mediaType,
+                  data: attachment.base64,
+                }
+              });
+            } else if (attachment.content) {
+              // Text/PDF content - add as text
+              messageContent.push({
+                type: "text",
+                text: `\n\n--- Attached File: ${attachment.name} ---\n${attachment.content}\n--- End of ${attachment.name} ---`
+              });
+            }
+          }
+          
+          claudeMessages[lastUserMessageIndex].content = messageContent;
+        }
+      }
 
       // Add research context to system prompt if available
       const finalSystemPrompt = researchContext 

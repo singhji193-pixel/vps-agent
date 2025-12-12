@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { 
   Send, Loader2, Terminal, CheckCircle2, XCircle, AlertCircle, Copy, Check,
   Bug, Cpu, ListChecks, TestTube2, HeadphonesIcon, MessageSquare, ChevronDown,
-  Search, Brain, Bot, Settings2, Database, Archive, GitFork
+  Search, Brain, Bot, Settings2, Database, Archive, GitFork, Paperclip, X, FileText, Image as ImageIcon
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -67,8 +67,19 @@ export default function ChatPage() {
   const [newAgentName, setNewAgentName] = useState("");
   const [newAgentPrompt, setNewAgentPrompt] = useState("");
   const [currentThinking, setCurrentThinking] = useState("");
+  const [attachments, setAttachments] = useState<Array<{
+    name: string;
+    type: string;
+    size: number;
+    content?: string;
+    base64?: string;
+    mediaType?: string;
+    preview?: string;
+  }>>([]);
+  const [isUploading, setIsUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   const { data: servers, isLoading: serversLoading } = useQuery<VpsServer[]>({
@@ -127,15 +138,56 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages]);
 
+  const handleFileUpload = async (files: FileList) => {
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      Array.from(files).forEach(file => formData.append("files", file));
+      
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      
+      if (!response.ok) {
+        throw new Error("Upload failed");
+      }
+      
+      const data = await response.json();
+      const newAttachments = data.files.map((f: any) => ({
+        ...f,
+        preview: f.base64 && f.mediaType ? `data:${f.mediaType};base64,${f.base64}` : undefined,
+      }));
+      
+      setAttachments(prev => [...prev, ...newAttachments]);
+      toast({ title: `${files.length} file(s) attached` });
+    } catch (error) {
+      toast({ title: "Failed to upload file", variant: "destructive" });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index));
+  };
+
   const sendMessageMutation = useMutation({
     mutationFn: async (content: string) => {
       setIsStreaming(true);
+      const currentAttachments = [...attachments];
+      setAttachments([]); // Clear attachments after sending
+      
+      const attachmentInfo = currentAttachments.length > 0 
+        ? ` [${currentAttachments.length} file(s) attached: ${currentAttachments.map(a => a.name).join(", ")}]`
+        : "";
       
       const userMessage: ChatMessage = {
         id: `temp-${Date.now()}`,
         conversationId: conversationData?.id || "",
         role: "user",
-        content,
+        content: content + attachmentInfo,
         commandOutput: null,
         commandStatus: null,
         metadata: null,
@@ -167,6 +219,7 @@ export default function ChatPage() {
           enableThinking,
           customAgentId: selectedAgentId || undefined,
           model: selectedModel === "opus" ? "claude-opus-4-20250514" : "claude-sonnet-4-20250514",
+          attachments: currentAttachments,
         }),
       });
 
@@ -821,35 +874,98 @@ export default function ChatPage() {
           </div>
         )}
         <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2 p-2 bg-muted/50 rounded-lg">
+              {attachments.map((attachment, index) => (
+                <div
+                  key={index}
+                  className="flex items-center gap-2 bg-background rounded-md px-2 py-1.5 border text-sm"
+                >
+                  {attachment.preview ? (
+                    <img 
+                      src={attachment.preview} 
+                      alt={attachment.name}
+                      className="h-8 w-8 object-cover rounded"
+                    />
+                  ) : attachment.type.startsWith("image/") ? (
+                    <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                  )}
+                  <span className="max-w-[100px] truncate">{attachment.name}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5"
+                    onClick={() => removeAttachment(index)}
+                    data-testid={`button-remove-attachment-${index}`}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="relative">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*,.pdf,.txt,.md,.csv,.json"
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                  handleFileUpload(e.target.files);
+                  e.target.value = "";
+                }
+              }}
+              data-testid="input-file-upload"
+            />
             <Textarea
               ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask me to manage your VPS..."
-              className="min-h-[50px] sm:min-h-[60px] max-h-48 resize-none pr-12 sm:pr-14 text-sm sm:text-base"
+              placeholder="Ask me to manage your VPS... (attach files with the paperclip)"
+              className="min-h-[50px] sm:min-h-[60px] max-h-48 resize-none pr-24 sm:pr-28 text-sm sm:text-base"
               disabled={isStreaming}
               data-testid="input-chat-message"
             />
-            <Button
-              type="submit"
-              size="icon"
-              className="absolute right-2 bottom-2"
-              disabled={!input.trim() || isStreaming}
-              data-testid="button-send-message"
-            >
-              {isStreaming ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-            </Button>
+            <div className="absolute right-2 bottom-2 flex items-center gap-1">
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isStreaming || isUploading}
+                data-testid="button-attach-file"
+              >
+                {isUploading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Paperclip className="h-4 w-4" />
+                )}
+              </Button>
+              <Button
+                type="submit"
+                size="icon"
+                disabled={(!input.trim() && attachments.length === 0) || isStreaming}
+                data-testid="button-send-message"
+              >
+                {isStreaming ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
           </div>
           <p className="text-xs text-muted-foreground mt-2 text-center hidden sm:block">
             {activeServer
               ? `Connected to ${activeServer.name} • Commands will execute on this server`
               : "Connect a VPS server to execute commands"}
+            {attachments.length > 0 && ` • ${attachments.length} file(s) attached`}
           </p>
         </form>
       </div>
