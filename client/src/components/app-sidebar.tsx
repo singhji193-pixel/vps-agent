@@ -21,11 +21,12 @@ import {
   Terminal,
   Sparkles,
   Coins,
-  Zap,
+  LogOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
+import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 const mainNavItems = [
   {
@@ -69,12 +70,99 @@ interface UsageStats {
 }
 
 export function AppSidebar() {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
+  const [isCreating, setIsCreating] = useState(false);
+  const { toast } = useToast();
   
   const { data: usageData } = useQuery<UsageStats>({
     queryKey: ["/api/usage"],
     refetchInterval: 30000,
   });
+
+  // Handle New Conversation button click
+  const handleNewConversation = async () => {
+    try {
+      setIsCreating(true);
+      
+      // Get first server
+      const serversRes = await fetch('/api/vps-servers');
+      if (!serversRes.ok) throw new Error('Failed to fetch servers');
+      
+      const servers = await serversRes.json();
+      
+      if (servers.length === 0) {
+        toast({
+          title: "No VPS Server",
+          description: "Please add a VPS server first before creating a conversation.",
+          variant: "destructive",
+        });
+        setLocation('/servers');
+        return;
+      }
+      
+      // Create new conversation
+      const response = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          vpsServerId: servers[0].id,
+          title: 'New Chat',
+          mode: 'chat',
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to create conversation');
+      }
+      
+      const newConversation = await response.json();
+      
+      // Navigate to new conversation
+      setLocation('/');
+      
+      toast({
+        title: "New Chat Created",
+        description: "Ready to start chatting!",
+      });
+      
+    } catch (error) {
+      console.error('Error creating conversation:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create new conversation. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  // Handle Logout button click
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      
+      toast({
+        title: "Logged out",
+        description: "You have been logged out successfully.",
+      });
+      
+      // Redirect to login page
+      window.location.href = '/login';
+    } catch (error) {
+      console.error('Logout error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to logout. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const formatCost = (cost: number) => {
     return cost < 0.01 ? "<$0.01" : `$${cost.toFixed(2)}`;
@@ -102,9 +190,15 @@ export function AppSidebar() {
 
       <SidebarContent className="px-2">
         <div className="px-2 py-2">
-          <Button className="w-full justify-start gap-2" size="sm" data-testid="button-new-conversation">
+          <Button 
+            className="w-full justify-start gap-2" 
+            size="sm" 
+            data-testid="button-new-conversation"
+            onClick={handleNewConversation}
+            disabled={isCreating}
+          >
             <Plus className="h-4 w-4" />
-            New Conversation
+            {isCreating ? 'Creating...' : 'New Conversation'}
           </Button>
         </div>
 
@@ -191,6 +285,17 @@ export function AppSidebar() {
             Pro
           </Badge>
         </div>
+        
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="w-full justify-start gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+          onClick={handleLogout}
+          data-testid="button-logout"
+        >
+          <LogOut className="h-4 w-4" />
+          Logout
+        </Button>
       </SidebarFooter>
     </Sidebar>
   );
