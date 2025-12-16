@@ -83,6 +83,114 @@ backend:
         agent: "testing"
         comment: "POST https://vps.coengine.ai/api/chat requires authentication (401 Unauthorized) - expected behavior. Endpoint structure verified."
 
+  - task: "VPS Agent Conversations API - List"
+    implemented: true
+    working: "NA"
+    file: "external_api"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "testing"
+        comment: "GET https://vps.coengine.ai/api/conversations requires authentication (401 Unauthorized) - expected behavior. Endpoint accessible."
+
+  - task: "VPS Agent Conversations API - Create"
+    implemented: true
+    working: "NA"
+    file: "external_api"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "testing"
+        comment: "POST https://vps.coengine.ai/api/conversations requires authentication (401 Unauthorized) - expected behavior. Endpoint accessible."
+
+  - task: "VPS Agent Conversations API - Active"
+    implemented: true
+    working: "NA"
+    file: "external_api"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "testing"
+        comment: "GET https://vps.coengine.ai/api/conversations/active requires authentication (401 Unauthorized) - expected behavior. Endpoint accessible."
+
+  - task: "VPS Agent Conversations API - Activate"
+    implemented: true
+    working: "NA"
+    file: "external_api"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "testing"
+        comment: "POST https://vps.coengine.ai/api/conversations/:id/activate requires authentication (401 Unauthorized) - expected behavior. Endpoint accessible."
+
+  - task: "VPS Agent Conversations API - Delete"
+    implemented: true
+    working: "NA"
+    file: "external_api"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "testing"
+        comment: "DELETE https://vps.coengine.ai/api/conversations/:id requires authentication (401 Unauthorized) - expected behavior. Endpoint accessible."
+
+  - task: "VPS Agent Server Discovery"
+    implemented: true
+    working: "NA"
+    file: "external_api"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "testing"
+        comment: "POST https://vps.coengine.ai/api/vps-servers/:id/discover requires authentication (401 Unauthorized) - expected behavior. Auto-scan endpoint accessible."
+
+  - task: "VPS Agent Infrastructure Knowledge"
+    implemented: true
+    working: "NA"
+    file: "external_api"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "testing"
+        comment: "Infrastructure knowledge base endpoints require authentication. Cannot verify /opt/vps-agent/config/infrastructure.json without server access, but API structure supports infrastructure data."
+
+  - task: "VPS Agent Error Handling"
+    implemented: true
+    working: true
+    file: "external_api"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ Error handling working: Empty body validation (400), JSON validation (400), required field validation working. Minor: Email format validation could be improved (accepts invalid emails)."
+
+  - task: "VPS Agent Routing Issue"
+    implemented: true
+    working: false
+    file: "external_api"
+    stuck_count: 0
+    priority: "low"
+    needs_retesting: false
+    status_history:
+      - working: false
+        agent: "testing"
+        comment: "❌ Non-existent endpoints return 200 with HTML instead of 404 - indicates catch-all routing to frontend. This is a minor routing configuration issue."
+
 frontend:
   - task: "VPS Agent Frontend Login Flow"
     implemented: true
