@@ -230,9 +230,51 @@ def test_vps_agent_endpoints():
         print(f"Error: {e}")
         results.append(f"❌ POST /api/vps-servers/:id/discover - Error: {e}")
     
-    # Test 8: Chat endpoint structure (basic connectivity test)
+    # Test 8: Conversation activation endpoint
     try:
-        print("\n8. Testing POST /api/chat (SSE streaming test)")
+        print("\n8. Testing POST /api/conversations/test-id/activate")
+        response = requests.post(f"{VPS_AGENT_URL}/api/conversations/test-id/activate", 
+                               timeout=10)
+        print(f"Status Code: {response.status_code}")
+        print(f"Response: {response.text}")
+        
+        if response.status_code == 200:
+            results.append("✅ POST /api/conversations/:id/activate - Working")
+        elif response.status_code == 401:
+            results.append("⚠️ POST /api/conversations/:id/activate - Requires authentication (expected)")
+        elif response.status_code == 404:
+            results.append("⚠️ POST /api/conversations/:id/activate - Conversation not found (expected for test ID)")
+        else:
+            results.append(f"❌ POST /api/conversations/:id/activate - Failed with status {response.status_code}")
+            
+    except Exception as e:
+        print(f"Error: {e}")
+        results.append(f"❌ POST /api/conversations/:id/activate - Error: {e}")
+    
+    # Test 9: Conversation deletion endpoint
+    try:
+        print("\n9. Testing DELETE /api/conversations/test-id")
+        response = requests.delete(f"{VPS_AGENT_URL}/api/conversations/test-id", 
+                                 timeout=10)
+        print(f"Status Code: {response.status_code}")
+        print(f"Response: {response.text}")
+        
+        if response.status_code == 200 or response.status_code == 204:
+            results.append("✅ DELETE /api/conversations/:id - Working")
+        elif response.status_code == 401:
+            results.append("⚠️ DELETE /api/conversations/:id - Requires authentication (expected)")
+        elif response.status_code == 404:
+            results.append("⚠️ DELETE /api/conversations/:id - Conversation not found (expected for test ID)")
+        else:
+            results.append(f"❌ DELETE /api/conversations/:id - Failed with status {response.status_code}")
+            
+    except Exception as e:
+        print(f"Error: {e}")
+        results.append(f"❌ DELETE /api/conversations/:id - Error: {e}")
+    
+    # Test 10: Chat endpoint structure (basic connectivity test)
+    try:
+        print("\n10. Testing POST /api/chat (SSE streaming test)")
         test_data = {"message": "test infrastructure scan"}
         response = requests.post(f"{VPS_AGENT_URL}/api/chat", 
                                json=test_data, 
