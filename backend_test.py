@@ -299,6 +299,94 @@ def test_vps_agent_endpoints():
     
     return results
 
+def test_edge_cases():
+    """Test edge cases and error conditions"""
+    print("\n" + "=" * 60)
+    print("TESTING EDGE CASES AND ERROR CONDITIONS")
+    print("=" * 60)
+    
+    results = []
+    
+    # Test 1: Invalid email format for OTP
+    try:
+        print("\n1. Testing POST /api/auth/send-otp with invalid email")
+        test_data = {"email": "invalid-email"}
+        response = requests.post(f"{VPS_AGENT_URL}/api/auth/send-otp", 
+                               json=test_data, 
+                               timeout=10)
+        print(f"Status Code: {response.status_code}")
+        print(f"Response: {response.text}")
+        
+        if response.status_code == 400:
+            results.append("✅ POST /api/auth/send-otp - Properly validates email format")
+        elif response.status_code == 200:
+            results.append("⚠️ POST /api/auth/send-otp - Accepts invalid email (may need validation)")
+        else:
+            results.append(f"❌ POST /api/auth/send-otp - Unexpected status {response.status_code}")
+            
+    except Exception as e:
+        print(f"Error: {e}")
+        results.append(f"❌ POST /api/auth/send-otp (invalid email) - Error: {e}")
+    
+    # Test 2: Empty request body for OTP
+    try:
+        print("\n2. Testing POST /api/auth/send-otp with empty body")
+        response = requests.post(f"{VPS_AGENT_URL}/api/auth/send-otp", 
+                               json={}, 
+                               timeout=10)
+        print(f"Status Code: {response.status_code}")
+        print(f"Response: {response.text}")
+        
+        if response.status_code == 400:
+            results.append("✅ POST /api/auth/send-otp - Properly validates required fields")
+        elif response.status_code == 200:
+            results.append("⚠️ POST /api/auth/send-otp - Accepts empty body (may need validation)")
+        else:
+            results.append(f"❌ POST /api/auth/send-otp - Unexpected status {response.status_code}")
+            
+    except Exception as e:
+        print(f"Error: {e}")
+        results.append(f"❌ POST /api/auth/send-otp (empty body) - Error: {e}")
+    
+    # Test 3: Invalid JSON for chat endpoint
+    try:
+        print("\n3. Testing POST /api/chat with malformed JSON")
+        response = requests.post(f"{VPS_AGENT_URL}/api/chat", 
+                               data="invalid json", 
+                               headers={'Content-Type': 'application/json'},
+                               timeout=10)
+        print(f"Status Code: {response.status_code}")
+        print(f"Response: {response.text}")
+        
+        if response.status_code == 400:
+            results.append("✅ POST /api/chat - Properly validates JSON format")
+        elif response.status_code == 401:
+            results.append("⚠️ POST /api/chat - Auth check before JSON validation (acceptable)")
+        else:
+            results.append(f"❌ POST /api/chat - Unexpected status {response.status_code}")
+            
+    except Exception as e:
+        print(f"Error: {e}")
+        results.append(f"❌ POST /api/chat (malformed JSON) - Error: {e}")
+    
+    # Test 4: Non-existent endpoint
+    try:
+        print("\n4. Testing GET /api/non-existent-endpoint")
+        response = requests.get(f"{VPS_AGENT_URL}/api/non-existent-endpoint", timeout=10)
+        print(f"Status Code: {response.status_code}")
+        print(f"Response: {response.text}")
+        
+        if response.status_code == 404:
+            results.append("✅ Non-existent endpoint - Properly returns 404")
+        else:
+            results.append(f"❌ Non-existent endpoint - Unexpected status {response.status_code}")
+            
+    except Exception as e:
+        print(f"Error: {e}")
+        results.append(f"❌ Non-existent endpoint - Error: {e}")
+    
+    return results
+
 def test_infrastructure_knowledge():
     """Test infrastructure knowledge base functionality"""
     print("\n" + "=" * 60)
