@@ -78,12 +78,12 @@ def test_local_backend():
 def test_vps_agent_endpoints():
     """Test the VPS Agent endpoints mentioned in review request"""
     print("\n" + "=" * 60)
-    print("TESTING VPS AGENT ENDPOINTS")
+    print("TESTING VPS AGENT ENDPOINTS - COMPREHENSIVE")
     print("=" * 60)
     
     results = []
     
-    # Test 1: Send OTP
+    # Test 1: Send OTP (Auth Flow)
     try:
         print("\n1. Testing POST /api/auth/send-otp")
         test_data = {"email": "judgebanjot@gmail.com"}
@@ -132,9 +132,68 @@ def test_vps_agent_endpoints():
         print(f"Error: {e}")
         results.append(f"❌ GET /api/auth/status - Error: {e}")
     
-    # Test 3: VPS servers (may require auth)
+    # Test 3: Conversations API - List conversations
     try:
-        print("\n3. Testing GET /api/vps-servers")
+        print("\n3. Testing GET /api/conversations")
+        response = requests.get(f"{VPS_AGENT_URL}/api/conversations", timeout=10)
+        print(f"Status Code: {response.status_code}")
+        print(f"Response: {response.text}")
+        
+        if response.status_code == 200:
+            results.append("✅ GET /api/conversations - Working")
+        elif response.status_code == 401:
+            results.append("⚠️ GET /api/conversations - Requires authentication (expected)")
+        else:
+            results.append(f"❌ GET /api/conversations - Failed with status {response.status_code}")
+            
+    except Exception as e:
+        print(f"Error: {e}")
+        results.append(f"❌ GET /api/conversations - Error: {e}")
+    
+    # Test 4: Conversations API - Create new conversation
+    try:
+        print("\n4. Testing POST /api/conversations")
+        test_data = {"title": "Test Conversation"}
+        response = requests.post(f"{VPS_AGENT_URL}/api/conversations", 
+                               json=test_data, 
+                               timeout=10)
+        print(f"Status Code: {response.status_code}")
+        print(f"Response: {response.text}")
+        
+        if response.status_code == 200 or response.status_code == 201:
+            results.append("✅ POST /api/conversations - Working")
+        elif response.status_code == 401:
+            results.append("⚠️ POST /api/conversations - Requires authentication (expected)")
+        else:
+            results.append(f"❌ POST /api/conversations - Failed with status {response.status_code}")
+            
+    except Exception as e:
+        print(f"Error: {e}")
+        results.append(f"❌ POST /api/conversations - Error: {e}")
+    
+    # Test 5: Conversations API - Get active conversation
+    try:
+        print("\n5. Testing GET /api/conversations/active")
+        response = requests.get(f"{VPS_AGENT_URL}/api/conversations/active", timeout=10)
+        print(f"Status Code: {response.status_code}")
+        print(f"Response: {response.text}")
+        
+        if response.status_code == 200:
+            results.append("✅ GET /api/conversations/active - Working")
+        elif response.status_code == 401:
+            results.append("⚠️ GET /api/conversations/active - Requires authentication (expected)")
+        elif response.status_code == 404:
+            results.append("⚠️ GET /api/conversations/active - No active conversation (expected)")
+        else:
+            results.append(f"❌ GET /api/conversations/active - Failed with status {response.status_code}")
+            
+    except Exception as e:
+        print(f"Error: {e}")
+        results.append(f"❌ GET /api/conversations/active - Error: {e}")
+    
+    # Test 6: VPS servers (may require auth)
+    try:
+        print("\n6. Testing GET /api/vps-servers")
         response = requests.get(f"{VPS_AGENT_URL}/api/vps-servers", timeout=10)
         print(f"Status Code: {response.status_code}")
         print(f"Response: {response.text}")
@@ -150,10 +209,31 @@ def test_vps_agent_endpoints():
         print(f"Error: {e}")
         results.append(f"❌ GET /api/vps-servers - Error: {e}")
     
-    # Test 4: Chat endpoint structure (basic connectivity test)
+    # Test 7: VPS Server Discovery (test with dummy ID)
     try:
-        print("\n4. Testing POST /api/chat (structure test)")
-        test_data = {"message": "test"}
+        print("\n7. Testing POST /api/vps-servers/test-id/discover")
+        response = requests.post(f"{VPS_AGENT_URL}/api/vps-servers/test-id/discover", 
+                               timeout=10)
+        print(f"Status Code: {response.status_code}")
+        print(f"Response: {response.text}")
+        
+        if response.status_code == 200:
+            results.append("✅ POST /api/vps-servers/:id/discover - Working")
+        elif response.status_code == 401:
+            results.append("⚠️ POST /api/vps-servers/:id/discover - Requires authentication (expected)")
+        elif response.status_code == 404:
+            results.append("⚠️ POST /api/vps-servers/:id/discover - Server not found (expected for test ID)")
+        else:
+            results.append(f"❌ POST /api/vps-servers/:id/discover - Failed with status {response.status_code}")
+            
+    except Exception as e:
+        print(f"Error: {e}")
+        results.append(f"❌ POST /api/vps-servers/:id/discover - Error: {e}")
+    
+    # Test 8: Chat endpoint structure (basic connectivity test)
+    try:
+        print("\n8. Testing POST /api/chat (SSE streaming test)")
+        test_data = {"message": "test infrastructure scan"}
         response = requests.post(f"{VPS_AGENT_URL}/api/chat", 
                                json=test_data, 
                                timeout=10,
