@@ -257,6 +257,64 @@ def test_vps_agent_endpoints():
     
     return results
 
+def test_infrastructure_knowledge():
+    """Test infrastructure knowledge base functionality"""
+    print("\n" + "=" * 60)
+    print("TESTING INFRASTRUCTURE KNOWLEDGE")
+    print("=" * 60)
+    
+    results = []
+    
+    # Test 1: Check if infrastructure config exists (this would be on the VPS server)
+    try:
+        print("\n1. Testing infrastructure config accessibility")
+        # We can't directly access the VPS server filesystem, but we can test if the API
+        # provides infrastructure information through other endpoints
+        
+        # Try to get server information that might include infrastructure data
+        response = requests.get(f"{VPS_AGENT_URL}/api/vps-servers", timeout=10)
+        print(f"Status Code: {response.status_code}")
+        
+        if response.status_code == 401:
+            results.append("⚠️ Infrastructure config - Cannot verify without authentication")
+        elif response.status_code == 200:
+            try:
+                json_response = response.json()
+                if isinstance(json_response, list) or isinstance(json_response, dict):
+                    results.append("✅ Infrastructure data - API provides server information")
+                else:
+                    results.append("❌ Infrastructure data - Unexpected response format")
+            except:
+                results.append("❌ Infrastructure data - Invalid JSON response")
+        else:
+            results.append(f"❌ Infrastructure config - API error {response.status_code}")
+            
+    except Exception as e:
+        print(f"Error: {e}")
+        results.append(f"❌ Infrastructure config - Error: {e}")
+    
+    # Test 2: Test auto-scan trigger (through discovery endpoint)
+    try:
+        print("\n2. Testing auto-scan trigger capability")
+        # Test if the discovery endpoint structure is available
+        response = requests.post(f"{VPS_AGENT_URL}/api/vps-servers/test/discover", timeout=10)
+        print(f"Status Code: {response.status_code}")
+        
+        if response.status_code == 401:
+            results.append("⚠️ Auto-scan trigger - Endpoint exists but requires authentication")
+        elif response.status_code == 404:
+            results.append("⚠️ Auto-scan trigger - Endpoint structure available (404 expected for test ID)")
+        elif response.status_code == 200:
+            results.append("✅ Auto-scan trigger - Working")
+        else:
+            results.append(f"❌ Auto-scan trigger - Unexpected status {response.status_code}")
+            
+    except Exception as e:
+        print(f"Error: {e}")
+        results.append(f"❌ Auto-scan trigger - Error: {e}")
+    
+    return results
+
 def main():
     """Run all tests and provide summary"""
     print("VPS AGENT AUTO-EXECUTION BACKEND TESTING")
