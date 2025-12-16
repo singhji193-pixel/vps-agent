@@ -317,7 +317,7 @@ def test_infrastructure_knowledge():
 
 def main():
     """Run all tests and provide summary"""
-    print("VPS AGENT AUTO-EXECUTION BACKEND TESTING")
+    print("VPS AGENT COMPREHENSIVE BACKEND TESTING")
     print("Testing Date:", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     
     # Test local backend
@@ -326,33 +326,52 @@ def main():
     # Test VPS agent endpoints
     vps_results = test_vps_agent_endpoints()
     
+    # Test infrastructure knowledge
+    infra_results = test_infrastructure_knowledge()
+    
     # Print summary
     print("\n" + "=" * 60)
-    print("TEST SUMMARY")
+    print("COMPREHENSIVE TEST SUMMARY")
     print("=" * 60)
     
     print("\nLocal Backend Results:")
     for result in local_results:
         print(f"  {result}")
     
-    print("\nVPS Agent Results:")
+    print("\nVPS Agent API Results:")
     for result in vps_results:
         print(f"  {result}")
     
+    print("\nInfrastructure Knowledge Results:")
+    for result in infra_results:
+        print(f"  {result}")
+    
     # Count failures
-    all_results = local_results + vps_results
+    all_results = local_results + vps_results + infra_results
     failed_tests = [r for r in all_results if r.startswith("❌")]
+    warning_tests = [r for r in all_results if r.startswith("⚠️")]
+    success_tests = [r for r in all_results if r.startswith("✅")]
     
     print(f"\nTotal Tests: {len(all_results)}")
+    print(f"Successful Tests: {len(success_tests)}")
+    print(f"Warning Tests (Auth Required): {len(warning_tests)}")
     print(f"Failed Tests: {len(failed_tests)}")
     
     if failed_tests:
-        print("\nFAILED TESTS:")
+        print("\nCRITICAL FAILURES:")
         for failure in failed_tests:
             print(f"  {failure}")
+    
+    if warning_tests:
+        print("\nWARNINGS (Expected - Auth Required):")
+        for warning in warning_tests:
+            print(f"  {warning}")
+    
+    # Return 1 only for actual failures, not auth warnings
+    if failed_tests:
         return 1
     else:
-        print("\n✅ All tests passed!")
+        print("\n✅ All accessible tests passed! Auth-protected endpoints behaving as expected.")
         return 0
 
 if __name__ == "__main__":
