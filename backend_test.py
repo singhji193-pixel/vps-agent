@@ -456,6 +456,9 @@ def main():
     # Test VPS agent endpoints
     vps_results = test_vps_agent_endpoints()
     
+    # Test edge cases
+    edge_results = test_edge_cases()
+    
     # Test infrastructure knowledge
     infra_results = test_infrastructure_knowledge()
     
