@@ -260,9 +260,7 @@ metadata:
 
 test_plan:
   current_focus:
-    - "VPS Agent Frontend Login Flow"
-    - "VPS Agent Frontend Mobile Responsiveness"
-    - "VPS Agent Frontend Authentication Protection"
+    - "VPS Agent Routing Issue"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
