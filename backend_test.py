@@ -475,12 +475,16 @@ def main():
     for result in vps_results:
         print(f"  {result}")
     
+    print("\nEdge Cases & Error Handling Results:")
+    for result in edge_results:
+        print(f"  {result}")
+    
     print("\nInfrastructure Knowledge Results:")
     for result in infra_results:
         print(f"  {result}")
     
     # Count failures
-    all_results = local_results + vps_results + infra_results
+    all_results = local_results + vps_results + edge_results + infra_results
     failed_tests = [r for r in all_results if r.startswith("❌")]
     warning_tests = [r for r in all_results if r.startswith("⚠️")]
     success_tests = [r for r in all_results if r.startswith("✅")]
