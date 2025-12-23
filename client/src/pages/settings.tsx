@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   User,
@@ -11,6 +11,9 @@ import {
   Moon,
   Sun,
   Monitor,
+  Key,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,14 +34,38 @@ import { useTheme } from "@/lib/theme-provider";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { User as UserType } from "@shared/schema";
 
+interface ApiKeyStatus {
+  anthropic: { configured: boolean; source: "user" | "env" | "none"; masked: string };
+  perplexity: { configured: boolean; source: "user" | "env" | "none"; masked: string };
+}
+
 export default function SettingsPage() {
   const [webhookUrl, setWebhookUrl] = useState("");
+  const [anthropicKey, setAnthropicKey] = useState("");
+  const [perplexityKey, setPerplexityKey] = useState("");
+  const [showAnthropicKey, setShowAnthropicKey] = useState(false);
+  const [showPerplexityKey, setShowPerplexityKey] = useState(false);
   const { toast } = useToast();
   const { theme, setTheme } = useTheme();
 
   const { data: user } = useQuery<UserType>({
     queryKey: ["/api/auth/me"],
   });
+
+  const { data: apiKeyStatus, refetch: refetchApiKeys } = useQuery<ApiKeyStatus>({
+    queryKey: ["/api/settings/api-keys"],
+  });
+
+  const { data: webhookData } = useQuery<{ webhookUrl: string }>({
+    queryKey: ["/api/settings/webhook"],
+  });
+
+  // Load saved webhook URL when data arrives
+  useEffect(() => {
+    if (webhookData?.webhookUrl) {
+      setWebhookUrl(webhookData.webhookUrl);
+    }
+  }, [webhookData]);
 
   const updateWebhookMutation = useMutation({
     mutationFn: async (url: string) => {
@@ -66,6 +93,21 @@ export default function SettingsPage() {
     onSuccess: () => {
       queryClient.clear();
       window.location.href = "/";
+    },
+  });
+
+  const saveApiKeysMutation = useMutation({
+    mutationFn: async (keys: { anthropicApiKey?: string; perplexityApiKey?: string }) => {
+      return apiRequest("POST", "/api/settings/api-keys", keys);
+    },
+    onSuccess: () => {
+      toast({ title: "API keys saved", description: "Your API keys have been securely stored." });
+      setAnthropicKey("");
+      setPerplexityKey("");
+      refetchApiKeys();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
 
@@ -141,6 +183,107 @@ export default function SettingsPage() {
                   </SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Key className="h-4 w-4" />
+              API Keys
+            </CardTitle>
+            <CardDescription>
+              Configure your AI provider API keys (stored encrypted)
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Claude API Key */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="anthropic-key">Claude (Anthropic) API Key</Label>
+                {apiKeyStatus?.anthropic && (
+                  <Badge variant={apiKeyStatus.anthropic.configured ? "secondary" : "outline"} className="text-xs">
+                    {apiKeyStatus.anthropic.source === "user" ? "Custom" : 
+                     apiKeyStatus.anthropic.source === "env" ? "Environment" : "Not set"}
+                  </Badge>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Input
+                    id="anthropic-key"
+                    type={showAnthropicKey ? "text" : "password"}
+                    value={anthropicKey}
+                    onChange={(e) => setAnthropicKey(e.target.value)}
+                    placeholder={apiKeyStatus?.anthropic?.masked || "sk-ant-api..."}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-1 top-1 h-7 w-7 p-0"
+                    onClick={() => setShowAnthropicKey(!showAnthropicKey)}
+                  >
+                    {showAnthropicKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <Button
+                  onClick={() => saveApiKeysMutation.mutate({ anthropicApiKey: anthropicKey })}
+                  disabled={!anthropicKey || saveApiKeysMutation.isPending}
+                >
+                  {saveApiKeysMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Required for AI agent. Get your key from{" "}
+                <a href="https://console.anthropic.com/" target="_blank" rel="noopener" className="underline">console.anthropic.com</a>
+              </p>
+            </div>
+
+            <Separator />
+
+            {/* Perplexity API Key */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="perplexity-key">Perplexity API Key (Optional)</Label>
+                {apiKeyStatus?.perplexity && (
+                  <Badge variant={apiKeyStatus.perplexity.configured ? "secondary" : "outline"} className="text-xs">
+                    {apiKeyStatus.perplexity.source === "user" ? "Custom" : 
+                     apiKeyStatus.perplexity.source === "env" ? "Environment" : "Not set"}
+                  </Badge>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Input
+                    id="perplexity-key"
+                    type={showPerplexityKey ? "text" : "password"}
+                    value={perplexityKey}
+                    onChange={(e) => setPerplexityKey(e.target.value)}
+                    placeholder={apiKeyStatus?.perplexity?.masked || "pplx-..."}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-1 top-1 h-7 w-7 p-0"
+                    onClick={() => setShowPerplexityKey(!showPerplexityKey)}
+                  >
+                    {showPerplexityKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <Button
+                  onClick={() => saveApiKeysMutation.mutate({ perplexityApiKey: perplexityKey })}
+                  disabled={!perplexityKey || saveApiKeysMutation.isPending}
+                >
+                  {saveApiKeysMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Enables Research mode for real-time web search. Get your key from{" "}
+                <a href="https://www.perplexity.ai/settings/api" target="_blank" rel="noopener" className="underline">perplexity.ai</a>
+              </p>
             </div>
           </CardContent>
         </Card>

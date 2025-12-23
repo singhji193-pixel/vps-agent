@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/sidebar";
 import {
   Server,
-  TestTube2,
   Github,
   Settings,
   Plus,
@@ -22,6 +21,10 @@ import {
   Sparkles,
   Coins,
   LogOut,
+  Activity,
+  ListTodo,
+  Container,
+  FolderArchive,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -30,16 +33,40 @@ import { useToast } from "@/hooks/use-toast";
 
 const mainNavItems = [
   {
-    title: "Unified Agent",
+    title: "Agent",
     url: "/",
     icon: Sparkles,
     description: "AI-powered VPS management",
   },
   {
-    title: "Testing Dashboard",
-    url: "/testing",
-    icon: TestTube2,
-    description: "View test runs",
+    title: "Terminal",
+    url: "/terminal",
+    icon: Terminal,
+    description: "Real-time SSH with AI",
+  },
+  {
+    title: "Monitoring",
+    url: "/monitoring",
+    icon: Activity,
+    description: "Server metrics & alerts",
+  },
+  {
+    title: "Tasks",
+    url: "/tasks",
+    icon: ListTodo,
+    description: "Multi-step orchestration",
+  },
+  {
+    title: "Infrastructure",
+    url: "/infrastructure",
+    icon: Container,
+    description: "Docker, Nginx & SSL",
+  },
+  {
+    title: "Backups",
+    url: "/backups",
+    icon: FolderArchive,
+    description: "Backup & restore with restic",
   },
 ];
 

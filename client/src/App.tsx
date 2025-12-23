@@ -9,11 +9,15 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import AuthPage from "@/pages/auth";
-import ChatPage from "@/pages/chat";
 import ServersPage from "@/pages/servers";
-import TestingPage from "@/pages/testing";
 import GithubPage from "@/pages/github";
+import BackupsPage from "@/pages/backups";
 import SettingsPage from "@/pages/settings";
+import TerminalPage from "@/pages/terminal";
+import MonitoringPage from "@/pages/monitoring";
+import TasksPage from "@/pages/tasks";
+import InfrastructurePage from "@/pages/infrastructure";
+import AgentPage from "@/pages/agent";
 import NotFound from "@/pages/not-found";
 
 function AuthenticatedApp() {
@@ -33,9 +37,13 @@ function AuthenticatedApp() {
           </header>
           <main className="flex-1 overflow-hidden">
             <Switch>
-              <Route path="/" component={ChatPage} />
+              <Route path="/" component={AgentPage} />
               <Route path="/servers" component={ServersPage} />
-              <Route path="/testing" component={TestingPage} />
+              <Route path="/terminal" component={TerminalPage} />
+              <Route path="/monitoring" component={MonitoringPage} />
+              <Route path="/tasks" component={TasksPage} />
+              <Route path="/infrastructure" component={InfrastructurePage} />
+              <Route path="/backups" component={BackupsPage} />
               <Route path="/github" component={GithubPage} />
               <Route path="/settings" component={SettingsPage} />
               <Route component={NotFound} />

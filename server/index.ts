@@ -3,6 +3,9 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import cookieParser from "cookie-parser";
+import agenticRoutes from "./agentic-routes";
+import { setupTerminalWebSocket } from "./terminal-websocket";
+import { requireAuth } from "./auth";
 
 const app = express();
 const httpServer = createServer(app);
@@ -64,6 +67,13 @@ app.use((req, res, next) => {
 
 (async () => {
   await registerRoutes(httpServer, app);
+
+  // Mount agentic AI routes with authentication
+  app.use("/api/agent", requireAuth, agenticRoutes);
+
+  // Setup real-time terminal WebSocket
+  setupTerminalWebSocket(httpServer);
+  log("Terminal WebSocket ready at /ws/terminal");
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

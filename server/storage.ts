@@ -1,6 +1,7 @@
 import {
   users, otpCodes, vpsServers, conversations, messages, testRuns, testSteps, githubIntegrations, commandHistory,
-  customAgents, conversationSummaries, apiUsage,
+  customAgents, conversationSummaries, apiUsage, userSettings,
+  backupConfigs, backupSchedules, backupSnapshots, backupOperations,
   type User, type InsertUser,
   type OtpCode, type InsertOtpCode,
   type VpsServer, type InsertVpsServer,
@@ -13,6 +14,11 @@ import {
   type CustomAgent, type InsertCustomAgent,
   type ConversationSummary, type InsertConversationSummary,
   type ApiUsage, type InsertApiUsage,
+  type UserSettings, type InsertUserSettings,
+  type BackupConfig, type InsertBackupConfig,
+  type BackupSchedule, type InsertBackupSchedule,
+  type BackupSnapshot, type InsertBackupSnapshot,
+  type BackupOperation, type InsertBackupOperation,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, lt, gte } from "drizzle-orm";
@@ -89,6 +95,39 @@ export interface IStorage {
   getApiUsage(userId: string): Promise<ApiUsage[]>;
   getApiUsageStats(userId: string): Promise<{ totalTokens: number; totalCost: number; requestCount: number }>;
   createApiUsage(usage: InsertApiUsage): Promise<ApiUsage>;
+
+  // User Settings
+  getUserSettings(userId: string): Promise<UserSettings | undefined>;
+  upsertUserSettings(userId: string, settings: Partial<InsertUserSettings>): Promise<UserSettings>;
+
+  // Backup Configs
+  getBackupConfigs(userId: string): Promise<BackupConfig[]>;
+  getBackupConfigsByServer(vpsServerId: string): Promise<BackupConfig[]>;
+  getBackupConfig(id: string): Promise<BackupConfig | undefined>;
+  createBackupConfig(config: InsertBackupConfig): Promise<BackupConfig>;
+  updateBackupConfig(id: string, updates: Partial<BackupConfig>): Promise<BackupConfig | undefined>;
+  deleteBackupConfig(id: string): Promise<void>;
+
+  // Backup Schedules
+  getBackupSchedules(configId: string): Promise<BackupSchedule[]>;
+  getBackupSchedule(id: string): Promise<BackupSchedule | undefined>;
+  createBackupSchedule(schedule: InsertBackupSchedule): Promise<BackupSchedule>;
+  updateBackupSchedule(id: string, updates: Partial<BackupSchedule>): Promise<BackupSchedule | undefined>;
+  deleteBackupSchedule(id: string): Promise<void>;
+
+  // Backup Snapshots
+  getBackupSnapshots(configId: string): Promise<BackupSnapshot[]>;
+  getBackupSnapshot(id: string): Promise<BackupSnapshot | undefined>;
+  getBackupSnapshotByResticId(configId: string, snapshotId: string): Promise<BackupSnapshot | undefined>;
+  createBackupSnapshot(snapshot: InsertBackupSnapshot): Promise<BackupSnapshot>;
+  updateBackupSnapshot(id: string, updates: Partial<BackupSnapshot>): Promise<BackupSnapshot | undefined>;
+  deleteBackupSnapshot(id: string): Promise<void>;
+
+  // Backup Operations
+  getBackupOperations(userId: string, configId?: string): Promise<BackupOperation[]>;
+  getBackupOperation(id: string): Promise<BackupOperation | undefined>;
+  createBackupOperation(operation: InsertBackupOperation): Promise<BackupOperation>;
+  updateBackupOperation(id: string, updates: Partial<BackupOperation>): Promise<BackupOperation | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -369,33 +408,238 @@ export class DatabaseStorage implements IStorage {
 
   // API Usage
   async getApiUsage(userId: string): Promise<ApiUsage[]> {
+    // Get current month's usage only
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    
     return db
       .select()
       .from(apiUsage)
-      .where(eq(apiUsage.userId, userId))
+      .where(and(
+        eq(apiUsage.userId, userId),
+        gte(apiUsage.createdAt, startOfMonth)
+      ))
       .orderBy(desc(apiUsage.createdAt))
       .limit(100);
   }
 
-  async getApiUsageStats(userId: string): Promise<{ totalTokens: number; totalCost: number; requestCount: number }> {
+  async getApiUsageStats(userId: string): Promise<{ 
+    totalTokens: number; 
+    totalCost: number; 
+    requestCount: number;
+    claudeTokens: number;
+    claudeCost: number;
+    perplexityTokens: number;
+    perplexityCost: number;
+  }> {
+    // Get current month's usage only
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    
     const usageRecords = await db
       .select()
       .from(apiUsage)
-      .where(eq(apiUsage.userId, userId));
+      .where(and(
+        eq(apiUsage.userId, userId),
+        gte(apiUsage.createdAt, startOfMonth)
+      ));
+    
+    const claudeRecords = usageRecords.filter(r => r.model.includes('claude'));
+    const perplexityRecords = usageRecords.filter(r => r.model.includes('perplexity') || r.model.includes('llama'));
     
     const totalTokens = usageRecords.reduce((sum, r) => sum + r.totalTokens, 0);
     const totalCost = usageRecords.reduce((sum, r) => sum + parseFloat(r.estimatedCost), 0);
+    
+    const claudeTokens = claudeRecords.reduce((sum, r) => sum + r.totalTokens, 0);
+    const claudeCost = claudeRecords.reduce((sum, r) => sum + parseFloat(r.estimatedCost), 0);
+    
+    const perplexityTokens = perplexityRecords.reduce((sum, r) => sum + r.totalTokens, 0);
+    const perplexityCost = perplexityRecords.reduce((sum, r) => sum + parseFloat(r.estimatedCost), 0);
     
     return {
       totalTokens,
       totalCost,
       requestCount: usageRecords.length,
+      claudeTokens,
+      claudeCost,
+      perplexityTokens,
+      perplexityCost,
     };
   }
 
   async createApiUsage(usage: InsertApiUsage): Promise<ApiUsage> {
     const [created] = await db.insert(apiUsage).values(usage).returning();
     return created;
+  }
+
+  // User Settings
+  async getUserSettings(userId: string): Promise<UserSettings | undefined> {
+    const [settings] = await db.select().from(userSettings).where(eq(userSettings.userId, userId));
+    return settings || undefined;
+  }
+
+  async upsertUserSettings(userId: string, settings: Partial<InsertUserSettings>): Promise<UserSettings> {
+    const existing = await this.getUserSettings(userId);
+    
+    if (existing) {
+      const [updated] = await db
+        .update(userSettings)
+        .set({ ...settings, updatedAt: new Date() })
+        .where(eq(userSettings.userId, userId))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db
+        .insert(userSettings)
+        .values({ userId, ...settings })
+        .returning();
+      return created;
+    }
+  }
+
+  // Backup Configs
+  async getBackupConfigs(userId: string): Promise<BackupConfig[]> {
+    return db.select().from(backupConfigs).where(eq(backupConfigs.userId, userId)).orderBy(desc(backupConfigs.createdAt));
+  }
+
+  async getBackupConfigsByServer(vpsServerId: string): Promise<BackupConfig[]> {
+    return db.select().from(backupConfigs).where(eq(backupConfigs.vpsServerId, vpsServerId)).orderBy(desc(backupConfigs.createdAt));
+  }
+
+  async getBackupConfig(id: string): Promise<BackupConfig | undefined> {
+    const [config] = await db.select().from(backupConfigs).where(eq(backupConfigs.id, id));
+    return config || undefined;
+  }
+
+  async createBackupConfig(config: InsertBackupConfig): Promise<BackupConfig> {
+    const [created] = await db.insert(backupConfigs).values(config).returning();
+    return created;
+  }
+
+  async updateBackupConfig(id: string, updates: Partial<BackupConfig>): Promise<BackupConfig | undefined> {
+    const [config] = await db
+      .update(backupConfigs)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(backupConfigs.id, id))
+      .returning();
+    return config || undefined;
+  }
+
+  async deleteBackupConfig(id: string): Promise<void> {
+    // Delete related schedules, snapshots, and operations first
+    await db.delete(backupSchedules).where(eq(backupSchedules.backupConfigId, id));
+    await db.delete(backupOperations).where(eq(backupOperations.backupConfigId, id));
+    await db.delete(backupSnapshots).where(eq(backupSnapshots.backupConfigId, id));
+    await db.delete(backupConfigs).where(eq(backupConfigs.id, id));
+  }
+
+  // Backup Schedules
+  async getBackupSchedules(configId: string): Promise<BackupSchedule[]> {
+    return db.select().from(backupSchedules).where(eq(backupSchedules.backupConfigId, configId)).orderBy(desc(backupSchedules.createdAt));
+  }
+
+  async getBackupSchedule(id: string): Promise<BackupSchedule | undefined> {
+    const [schedule] = await db.select().from(backupSchedules).where(eq(backupSchedules.id, id));
+    return schedule || undefined;
+  }
+
+  async createBackupSchedule(schedule: InsertBackupSchedule): Promise<BackupSchedule> {
+    const [created] = await db.insert(backupSchedules).values(schedule).returning();
+    return created;
+  }
+
+  async updateBackupSchedule(id: string, updates: Partial<BackupSchedule>): Promise<BackupSchedule | undefined> {
+    const [schedule] = await db
+      .update(backupSchedules)
+      .set(updates)
+      .where(eq(backupSchedules.id, id))
+      .returning();
+    return schedule || undefined;
+  }
+
+  async deleteBackupSchedule(id: string): Promise<void> {
+    await db.delete(backupSchedules).where(eq(backupSchedules.id, id));
+  }
+
+  // Backup Snapshots
+  async getBackupSnapshots(configId: string): Promise<BackupSnapshot[]> {
+    return db.select().from(backupSnapshots).where(eq(backupSnapshots.backupConfigId, configId)).orderBy(desc(backupSnapshots.createdAt));
+  }
+
+  async getBackupSnapshot(id: string): Promise<BackupSnapshot | undefined> {
+    const [snapshot] = await db.select().from(backupSnapshots).where(eq(backupSnapshots.id, id));
+    return snapshot || undefined;
+  }
+
+  async getBackupSnapshotByResticId(configId: string, snapshotId: string): Promise<BackupSnapshot | undefined> {
+    const [snapshot] = await db
+      .select()
+      .from(backupSnapshots)
+      .where(and(
+        eq(backupSnapshots.backupConfigId, configId),
+        eq(backupSnapshots.snapshotId, snapshotId)
+      ));
+    return snapshot || undefined;
+  }
+
+  async createBackupSnapshot(snapshot: InsertBackupSnapshot): Promise<BackupSnapshot> {
+    const [created] = await db.insert(backupSnapshots).values(snapshot).returning();
+    return created;
+  }
+
+  async updateBackupSnapshot(id: string, updates: Partial<BackupSnapshot>): Promise<BackupSnapshot | undefined> {
+    const [snapshot] = await db
+      .update(backupSnapshots)
+      .set(updates)
+      .where(eq(backupSnapshots.id, id))
+      .returning();
+    return snapshot || undefined;
+  }
+
+  async deleteBackupSnapshot(id: string): Promise<void> {
+    await db.delete(backupSnapshots).where(eq(backupSnapshots.id, id));
+  }
+
+  // Backup Operations
+  async getBackupOperations(userId: string, configId?: string): Promise<BackupOperation[]> {
+    if (configId) {
+      return db
+        .select()
+        .from(backupOperations)
+        .where(and(
+          eq(backupOperations.userId, userId),
+          eq(backupOperations.backupConfigId, configId)
+        ))
+        .orderBy(desc(backupOperations.createdAt))
+        .limit(50);
+    }
+    return db
+      .select()
+      .from(backupOperations)
+      .where(eq(backupOperations.userId, userId))
+      .orderBy(desc(backupOperations.createdAt))
+      .limit(50);
+  }
+
+  async getBackupOperation(id: string): Promise<BackupOperation | undefined> {
+    const [operation] = await db.select().from(backupOperations).where(eq(backupOperations.id, id));
+    return operation || undefined;
+  }
+
+  async createBackupOperation(operation: InsertBackupOperation): Promise<BackupOperation> {
+    const [created] = await db.insert(backupOperations).values(operation).returning();
+    return created;
+  }
+
+  async updateBackupOperation(id: string, updates: Partial<BackupOperation>): Promise<BackupOperation | undefined> {
+    const [operation] = await db
+      .update(backupOperations)
+      .set(updates)
+      .where(eq(backupOperations.id, id))
+      .returning();
+    return operation || undefined;
   }
 }
 

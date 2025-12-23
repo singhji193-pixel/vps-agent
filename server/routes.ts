@@ -8,6 +8,7 @@ import { Client as SSHClient } from "ssh2";
 import multer from "multer";
 import * as fs from "fs";
 import * as path from "path";
+import { sessions, requireAuth } from "./auth";
 
 // Dynamic import for pdf-parse (CommonJS module)
 async function parsePdf(buffer: Buffer): Promise<string> {
@@ -34,23 +35,6 @@ const upload = multer({
     }
   }
 });
-
-// Session storage (in production, use Redis or database sessions)
-const sessions = new Map<string, { email: string; userId: string; expiresAt: Date }>();
-
-// Middleware to check authentication
-function requireAuth(req: Request, res: Response, next: () => void) {
-  const sessionId = req.headers.authorization?.replace("Bearer ", "") || req.cookies?.sessionId;
-  const session = sessions.get(sessionId);
-  
-  if (!session || session.expiresAt < new Date()) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-  
-  (req as any).userId = session.userId;
-  (req as any).email = session.email;
-  next();
-}
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({
@@ -289,6 +273,12 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Email is required" });
       }
 
+      // Check if email is allowed (whitelist)
+      const allowedEmails = (process.env.ALLOWED_EMAILS || "judgebanjot@gmail.com").split(",").map(e => e.trim().toLowerCase());
+      if (!allowedEmails.includes(email.toLowerCase())) {
+        return res.status(403).json({ error: "This email is not authorized to access VPS Agent" });
+      }
+
       // Generate 6-digit OTP
       const code = Math.floor(100000 + Math.random() * 900000).toString();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
@@ -310,8 +300,17 @@ export async function registerRoutes(
       // For now, log the code (you can see it in server logs for testing)
       console.log(`OTP for ${email}: ${code}`);
 
-      // If N8N_WEBHOOK_URL is set, send the OTP via webhook
-      if (process.env.N8N_WEBHOOK_URL) {
+      // Get webhook URL from user settings or env fallback
+      let webhookUrl = process.env.N8N_WEBHOOK_URL;
+      if (user) {
+        const userSettings = await storage.getUserSettings(user.id);
+        if (userSettings?.n8nWebhookUrl) {
+          webhookUrl = userSettings.n8nWebhookUrl;
+        }
+      }
+
+      // If webhook URL is available, send the OTP via webhook
+      if (webhookUrl) {
         try {
           const emailHtml = `
 <!DOCTYPE html>
@@ -336,7 +335,7 @@ export async function registerRoutes(
   </div>
 </body>
 </html>`;
-          await fetch(process.env.N8N_WEBHOOK_URL, {
+          await fetch(webhookUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ 
@@ -892,7 +891,7 @@ ${baseContext}
 - Ask for confirmation if the command is destructive
 - Be helpful, clear, and safety-conscious
 
-Format responses with markdown. For quick commands, be concise.`;
+Format responses with code. For quick commands, be concise.`;
     }
   }
 
@@ -1012,9 +1011,9 @@ Format responses with markdown. For quick commands, be concise.`;
         res.write(`data: ${JSON.stringify({ status: "researching" })}\n\n`);
         const research = await performWebResearch(content);
         if (research.answer) {
-          researchContext = `\n\n**Research Results:**\n${research.answer}`;
+          researchContext = "\n\n**Research Results:**\n" + research.answer;
           if (research.citations.length > 0) {
-            researchContext += `\n\nSources:\n${research.citations.map((c, i) => `${i + 1}. ${c}`).join("\n")}`;
+            researchContext += "\n\nSources:\n" + research.citations.map((c, i) => `${i + 1}. ${c}`).join("\n");
           }
           res.write(`data: ${JSON.stringify({ research: { found: true, citations: research.citations.length } })}\n\n`);
         }
@@ -1054,7 +1053,7 @@ Format responses with markdown. For quick commands, be concise.`;
               // Text/PDF content - add as text
               messageContent.push({
                 type: "text",
-                text: `\n\n--- Attached File: ${attachment.name} ---\n${attachment.content}\n--- End of ${attachment.name} ---`
+                text: "\n\n--- Attached File: " + attachment.name + " ---\n" + attachment.content + "\n--- End of " + attachment.name + " ---"
               });
             }
           }
@@ -1723,9 +1722,48 @@ Be strategic, thorough, and provide actionable insights.`;
 
   app.get("/api/github/commits", requireAuth, async (req, res) => {
     try {
-      // In production, fetch actual commits from GitHub
-      res.json([]);
+      const userId = (req as any).userId;
+      const integration = await storage.getGithubIntegration(userId);
+      
+      if (!integration || !integration.accessToken || !integration.repositoryUrl) {
+        return res.json([]);
+      }
+
+      // Parse owner/repo from URL
+      const match = integration.repositoryUrl.match(/github\.com[\/:]([^\/]+)\/([^\/.]+)/);
+      if (!match) {
+        return res.json([]);
+      }
+      const [, owner, repo] = match;
+
+      // Fetch commits from GitHub API
+      const response = await fetch(
+        `https://api.github.com/repos/${owner}/${repo}/commits?sha=${integration.branch || 'main'}&per_page=10`,
+        {
+          headers: {
+            'Authorization': `Bearer ${integration.accessToken}`,
+            'Accept': 'application/vnd.github.v3+json',
+            'User-Agent': 'VPS-Agent',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        console.error("GitHub API error:", await response.text());
+        return res.json([]);
+      }
+
+      const commits = await response.json();
+      const formatted = commits.map((c: any) => ({
+        sha: c.sha,
+        message: c.commit?.message || '',
+        author: c.commit?.author?.name || c.author?.login || 'Unknown',
+        date: c.commit?.author?.date || '',
+      }));
+
+      res.json(formatted);
     } catch (error) {
+      console.error("Failed to get commits:", error);
       res.status(500).json({ error: "Failed to get commits" });
     }
   });
@@ -1733,12 +1771,66 @@ Be strategic, thorough, and provide actionable insights.`;
   // Settings routes
   app.patch("/api/settings/webhook", requireAuth, async (req, res) => {
     try {
+      const userId = (req as any).userId;
       const { webhookUrl } = req.body;
-      // In production, save webhook URL to user settings
-      process.env.N8N_WEBHOOK_URL = webhookUrl;
+      
+      await storage.upsertUserSettings(userId, { n8nWebhookUrl: webhookUrl || null });
+      
       res.json({ success: true });
     } catch (error) {
+      console.error("Webhook update error:", error);
       res.status(500).json({ error: "Failed to update webhook" });
+    }
+  });
+
+  // Get webhook URL
+  app.get("/api/settings/webhook", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).userId;
+      const settings = await storage.getUserSettings(userId);
+      res.json({ webhookUrl: settings?.n8nWebhookUrl || "" });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get webhook" });
+    }
+  });
+
+  // Get API key status
+  app.get("/api/settings/api-keys", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).userId;
+      const { getApiKeyStatus } = await import("./api-keys");
+      const status = await getApiKeyStatus(userId);
+      res.json(status);
+    } catch (error) {
+      console.error("Get API keys error:", error);
+      res.status(500).json({ error: "Failed to get API key status" });
+    }
+  });
+
+  // Save API keys
+  app.post("/api/settings/api-keys", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).userId;
+      const { anthropicApiKey, perplexityApiKey } = req.body;
+      const { encryptApiKey, getApiKeyStatus } = await import("./api-keys");
+      
+      const updates: any = {};
+      
+      // Only update keys that are provided (empty string means clear)
+      if (anthropicApiKey !== undefined) {
+        updates.anthropicApiKey = anthropicApiKey ? encryptApiKey(anthropicApiKey) : null;
+      }
+      if (perplexityApiKey !== undefined) {
+        updates.perplexityApiKey = perplexityApiKey ? encryptApiKey(perplexityApiKey) : null;
+      }
+      
+      await storage.upsertUserSettings(userId, updates);
+      const status = await getApiKeyStatus(userId);
+      
+      res.json({ success: true, status });
+    } catch (error) {
+      console.error("Save API keys error:", error);
+      res.status(500).json({ error: "Failed to save API keys" });
     }
   });
 
@@ -1895,6 +1987,382 @@ Be strategic, thorough, and provide actionable insights.`;
     } catch (error) {
       console.error("Usage stats error:", error);
       res.status(500).json({ error: "Failed to get usage stats" });
+    }
+  });
+
+  // === Backup Management Routes ===
+
+  // Get all backup configurations for the user
+  app.get("/api/backup-configs", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).userId;
+      const configs = await storage.getBackupConfigs(userId);
+      res.json(configs);
+    } catch (error) {
+      console.error("Error getting backup configs:", error);
+      res.status(500).json({ error: "Failed to get backup configurations" });
+    }
+  });
+
+  // Get backup config by ID
+  app.get("/api/backup-configs/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const config = await storage.getBackupConfig(id);
+      if (!config) {
+        return res.status(404).json({ error: "Backup configuration not found" });
+      }
+      res.json(config);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get backup configuration" });
+    }
+  });
+
+  // Create a new backup configuration
+  app.post("/api/backup-configs", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).userId;
+      const {
+        vpsServerId,
+        name,
+        repositoryType,
+        repositoryPath,
+        password,
+        accessKeyId,
+        secretAccessKey,
+        endpoint,
+        region,
+        sftpHost,
+        sftpUser,
+        sftpKeyPath,
+        includePaths,
+        excludePatterns,
+        retentionDaily,
+        retentionWeekly,
+        retentionMonthly,
+        retentionYearly,
+      } = req.body;
+
+      if (!vpsServerId || !name || !repositoryType || !repositoryPath || !password) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      // Encrypt sensitive fields
+      const encryptedPassword = encryptCredential(password);
+      const encryptedAccessKey = accessKeyId ? encryptCredential(accessKeyId) : null;
+      const encryptedSecretKey = secretAccessKey ? encryptCredential(secretAccessKey) : null;
+
+      const config = await storage.createBackupConfig({
+        userId,
+        vpsServerId,
+        name,
+        repositoryType,
+        repositoryPath,
+        encryptedPassword,
+        accessKeyId: encryptedAccessKey,
+        secretAccessKey: encryptedSecretKey,
+        endpoint,
+        region,
+        sftpHost,
+        sftpUser,
+        sftpKeyPath,
+        includePaths: includePaths || ["/etc", "/var/www", "/home"],
+        excludePatterns: excludePatterns || ["*.log", "*.tmp", "node_modules", ".git"],
+        retentionDaily: retentionDaily || 7,
+        retentionWeekly: retentionWeekly || 4,
+        retentionMonthly: retentionMonthly || 12,
+        retentionYearly: retentionYearly || 2,
+      });
+
+      res.json(config);
+    } catch (error) {
+      console.error("Error creating backup config:", error);
+      res.status(500).json({ error: "Failed to create backup configuration" });
+    }
+  });
+
+  // Update backup configuration
+  app.patch("/api/backup-configs/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = { ...req.body };
+
+      // Re-encrypt password if changed
+      if (updates.password) {
+        updates.encryptedPassword = encryptCredential(updates.password);
+        delete updates.password;
+      }
+      if (updates.accessKeyId) {
+        updates.accessKeyId = encryptCredential(updates.accessKeyId);
+      }
+      if (updates.secretAccessKey) {
+        updates.secretAccessKey = encryptCredential(updates.secretAccessKey);
+      }
+
+      const config = await storage.updateBackupConfig(id, updates);
+      res.json(config);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update backup configuration" });
+    }
+  });
+
+  // Delete backup configuration
+  app.delete("/api/backup-configs/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteBackupConfig(id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete backup configuration" });
+    }
+  });
+
+  // Get snapshots for a backup configuration
+  app.get("/api/backup-configs/:id/snapshots", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const snapshots = await storage.getBackupSnapshots(id);
+      res.json(snapshots);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get snapshots" });
+    }
+  });
+
+  // Get schedules for a backup configuration
+  app.get("/api/backup-configs/:id/schedules", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const schedules = await storage.getBackupSchedules(id);
+      res.json(schedules);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get schedules" });
+    }
+  });
+
+  // Create backup schedule
+  app.post("/api/backup-configs/:id/schedules", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { cronExpression, isEnabled } = req.body;
+
+      if (!cronExpression) {
+        return res.status(400).json({ error: "Cron expression is required" });
+      }
+
+      const schedule = await storage.createBackupSchedule({
+        backupConfigId: id,
+        cronExpression,
+        isEnabled: isEnabled !== false,
+      });
+
+      res.json(schedule);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create schedule" });
+    }
+  });
+
+  // Update backup schedule
+  app.patch("/api/backup-schedules/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const schedule = await storage.updateBackupSchedule(id, req.body);
+      res.json(schedule);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update schedule" });
+    }
+  });
+
+  // Delete backup schedule
+  app.delete("/api/backup-schedules/:id", requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteBackupSchedule(id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete schedule" });
+    }
+  });
+
+  // Get backup operations history
+  app.get("/api/backup-operations", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).userId;
+      const configId = req.query.configId as string | undefined;
+      const operations = await storage.getBackupOperations(userId, configId);
+      res.json(operations);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get operations" });
+    }
+  });
+
+  // Trigger manual backup (creates operation record)
+  app.post("/api/backup-configs/:id/backup", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).userId;
+      const { id } = req.params;
+      const { tags } = req.body;
+
+      const config = await storage.getBackupConfig(id);
+      if (!config) {
+        return res.status(404).json({ error: "Backup configuration not found" });
+      }
+
+      // Create operation record
+      const operation = await storage.createBackupOperation({
+        userId,
+        backupConfigId: id,
+        operationType: "backup",
+      });
+
+      // Start operation in background
+      await storage.updateBackupOperation(operation.id, {
+        status: "running",
+        startedAt: new Date(),
+      });
+
+      res.json({
+        success: true,
+        operationId: operation.id,
+        message: "Backup started. Use the agent to monitor progress.",
+      });
+    } catch (error) {
+      console.error("Backup error:", error);
+      res.status(500).json({ error: "Failed to start backup" });
+    }
+  });
+
+  // Trigger restore operation
+  app.post("/api/backup-configs/:id/restore", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).userId;
+      const { id } = req.params;
+      const { snapshotId, targetPath } = req.body;
+
+      if (!snapshotId) {
+        return res.status(400).json({ error: "Snapshot ID is required" });
+      }
+
+      const config = await storage.getBackupConfig(id);
+      if (!config) {
+        return res.status(404).json({ error: "Backup configuration not found" });
+      }
+
+      // Find the snapshot record
+      const snapshot = await storage.getBackupSnapshotByResticId(id, snapshotId);
+
+      // Create operation record
+      const operation = await storage.createBackupOperation({
+        userId,
+        backupConfigId: id,
+        snapshotId: snapshot?.id,
+        operationType: "restore",
+        targetPath,
+      });
+
+      res.json({
+        success: true,
+        operationId: operation.id,
+        message: "Restore operation queued. Use the agent to execute with approval.",
+        requiresApproval: true,
+      });
+    } catch (error) {
+      console.error("Restore error:", error);
+      res.status(500).json({ error: "Failed to queue restore" });
+    }
+  });
+
+  // Verify backup integrity
+  app.post("/api/backup-configs/:id/verify", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).userId;
+      const { id } = req.params;
+      const { readData } = req.body;
+
+      const operation = await storage.createBackupOperation({
+        userId,
+        backupConfigId: id,
+        operationType: "verify",
+      });
+
+      res.json({
+        success: true,
+        operationId: operation.id,
+        message: "Verification started. This may take a while.",
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to start verification" });
+    }
+  });
+
+  // Download snapshot (prepare for download)
+  app.post("/api/backup-configs/:id/download", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).userId;
+      const { id } = req.params;
+      const { snapshotId, paths } = req.body;
+
+      if (!snapshotId) {
+        return res.status(400).json({ error: "Snapshot ID is required" });
+      }
+
+      // Create download operation
+      const operation = await storage.createBackupOperation({
+        userId,
+        backupConfigId: id,
+        operationType: "download",
+        targetPath: paths ? paths.join(",") : undefined,
+      });
+
+      res.json({
+        success: true,
+        operationId: operation.id,
+        message: "Download preparation queued. Use the agent to restore to a downloadable location.",
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to prepare download" });
+    }
+  });
+
+  // Get backup overview for dashboard
+  app.get("/api/backups/overview", requireAuth, async (req, res) => {
+    try {
+      const userId = (req as any).userId;
+      const configs = await storage.getBackupConfigs(userId);
+      
+      const overview = await Promise.all(configs.map(async (config) => {
+        const snapshots = await storage.getBackupSnapshots(config.id);
+        const schedules = await storage.getBackupSchedules(config.id);
+        const recentOps = await storage.getBackupOperations(userId, config.id);
+        
+        const latestSnapshot = snapshots[0];
+        const activeSchedule = schedules.find(s => s.isEnabled);
+        
+        return {
+          id: config.id,
+          name: config.name,
+          vpsServerId: config.vpsServerId,
+          repositoryType: config.repositoryType,
+          isInitialized: config.isInitialized,
+          snapshotCount: snapshots.length,
+          latestSnapshot: latestSnapshot ? {
+            id: latestSnapshot.snapshotId,
+            time: latestSnapshot.createdAt,
+            status: latestSnapshot.status,
+            sizeBytes: latestSnapshot.sizeBytes,
+          } : null,
+          schedule: activeSchedule ? {
+            cronExpression: activeSchedule.cronExpression,
+            lastRun: activeSchedule.lastRun,
+            nextRun: activeSchedule.nextRun,
+          } : null,
+          recentOperations: recentOps.slice(0, 5),
+        };
+      }));
+
+      res.json(overview);
+    } catch (error) {
+      console.error("Backup overview error:", error);
+      res.status(500).json({ error: "Failed to get backup overview" });
     }
   });
 
